@@ -48,7 +48,10 @@ public class ClothesAttributeDefService {
       definition = clothesAttributeDefRepository.saveAndFlush(
           ClothesAttributeDef.create(name));
     } catch (DataIntegrityViolationException e) {
-      throw ClothesAttributeDefNameDuplicatedException.withName(name);
+      if (e.getMessage() != null && e.getMessage().contains("uq_clothes_attribute_defs_name")) {
+        throw ClothesAttributeDefNameDuplicatedException.withName(name);
+      }
+      throw e;
     }
 
     List<ClothesAttributeDefValue> values =
