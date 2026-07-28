@@ -21,6 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.LinkedHashSet;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -35,17 +37,19 @@ public class ClothesAttributeDefService {
   @Transactional
   public ClothesAttributeDefDto create(ClothesAttributeDefCreateRequest request) {
     String name = request.name().trim();
-    List<String> selectableValues = request.selectableValues().stream()
-        .map(String::trim)
-        .filter(v -> !v.isEmpty())
-        .toList();
+    List<String> selectableValues = validateSelectableValues(request.selectableValues());
 
     if (clothesAttributeDefRepository.existsByName(name)) {
       throw ClothesAttributeDefNameDuplicatedException.withName(name);
     }
 
-    ClothesAttributeDef definition =
-        clothesAttributeDefRepository.save(ClothesAttributeDef.create(name));
+    ClothesAttributeDef definition;
+    try {
+      definition = clothesAttributeDefRepository.saveAndFlush(
+          ClothesAttributeDef.create(name));
+    } catch (DataIntegrityViolationException e) {
+      throw ClothesAttributeDefNameDuplicatedException.withName(name);
+    }
 
     List<ClothesAttributeDefValue> values =
         IntStream.range(0, selectableValues.size())
@@ -59,6 +63,20 @@ public class ClothesAttributeDefService {
     return clothesAttributeDefMapper.toDto(definition, savedValues);
   }
 
+  private List<String> validateSelectableValues(List<String> rawValues) {
+    List<String> trimmed = rawValues.stream()
+        .map(String::trim)
+        .filter(v -> !v.isEmpty())
+        .toList();
+
+    if (trimmed.isEmpty()) {
+      throw new IllegalArgumentException("선택 가능한 값을 1개 이상 입력해야 합니다.");
+    }
+    if (new LinkedHashSet<>(trimmed).size() != trimmed.size()) {
+      throw new IllegalArgumentException("선택 가능한 값은 중복될 수 없습니다.");
+    }
+    return trimmed;
+  }
   public List<ClothesAttributeDefDto> getAll(ClothesAttributeDefListParams params) {
     Sort sort = toSort(params);
     String keyword = params.keywordLike();

@@ -36,14 +36,18 @@ public interface ClothesAttributeDefApi {
   @Operation(summary = "의상 속성 정의 목록 조회", description = "의상 속성 정의 목록 조회 API")
   @ApiResponses({
       @ApiResponse(
-          responseCode = "200",
-          description = "의상 속성 정의 목록 조회 성공",
+          responseCode = "201",
+          description = "의상 속성 정의 등록 성공",
           content = @Content(
-              array = @ArraySchema(
-                  schema = @Schema(implementation = ClothesAttributeDefDto.class)))),
+              schema = @Schema(implementation = ClothesAttributeDefDto.class))),
       @ApiResponse(
           responseCode = "400",
-          description = "의상 속성 정의 목록 조회 실패",
+          description = "의상 속성 정의 등록 실패",
+          content = @Content(
+              schema = @Schema(implementation = ErrorResponse.class))),
+      @ApiResponse(
+          responseCode = "409",
+          description = "의상 속성 정의 이름 중복",
           content = @Content(
               schema = @Schema(implementation = ErrorResponse.class)))
   })

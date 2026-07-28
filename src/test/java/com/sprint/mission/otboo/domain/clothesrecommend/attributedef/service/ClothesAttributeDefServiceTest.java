@@ -50,7 +50,7 @@ class ClothesAttributeDefServiceTest {
 
   @Nested
   @DisplayName("의상 속성 정의 등록")
-  class 의상_속성_정의_등록 {
+  class Create {
 
     @Test
     @DisplayName("정상 요청이면 정의와 선택 값이 저장된다")
@@ -90,7 +90,7 @@ class ClothesAttributeDefServiceTest {
 
   @Nested
   @DisplayName("의상 속성 정의 목록 조회")
-  class 의상_속성_정의_목록_조회 {
+  class GetAll {
 
     @Test
     @DisplayName("전체 조회 시 정의별 선택 값을 함께 반환한다")
