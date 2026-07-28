@@ -13,4 +13,6 @@ public record ClothesAttributeDefListParams(
 
     @Size(max = 50)
     String keywordLike
-) {}
+) {
+
+}

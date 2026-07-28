@@ -12,4 +12,6 @@ public record ClothesAttributeDefCreateRequest(
 
     @NotEmpty
     List<@NotBlank @Size(max = 50) String> selectableValues
-) {}
+) {
+
+}

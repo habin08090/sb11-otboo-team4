@@ -9,4 +9,6 @@ public record ClothesAttributeDefDto(
     String name,
     List<String> selectableValues,
     Instant createdAt
-) {}
+) {
+
+}

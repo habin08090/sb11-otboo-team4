@@ -77,6 +77,7 @@ public class ClothesAttributeDefService {
     }
     return trimmed;
   }
+
   public List<ClothesAttributeDefDto> getAll(ClothesAttributeDefListParams params) {
     Sort sort = toSort(params);
     String keyword = params.keywordLike();
