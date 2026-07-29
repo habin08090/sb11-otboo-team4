@@ -122,6 +122,17 @@ public class ClothesAttributeDefService {
     ClothesAttributeDef definition = clothesAttributeDefRepository.findById(definitionId)
         .orElseThrow();
     definition.changeName(request.name().trim());
-    return clothesAttributeDefMapper.toDto(definition, List.of());
+
+    List<String> newValues = validateSelectableValues(request.selectableValues());
+    clothesAttributeDefValueRepository.deleteAllByDefinitionId(definitionId);
+
+    List<ClothesAttributeDefValue> values =
+        IntStream.range(0, newValues.size())
+            .mapToObj(i -> ClothesAttributeDefValue.create(definition, newValues.get(i), i))
+            .toList();
+    List<ClothesAttributeDefValue> savedValues =
+        clothesAttributeDefValueRepository.saveAll(values);
+
+    return clothesAttributeDefMapper.toDto(definition, savedValues);
   }
 }
