@@ -206,5 +206,45 @@ class ClothesAttributeDefServiceTest {
       assertThatThrownBy(() -> clothesAttributeDefService.update(definitionId, request))
           .isInstanceOf(ClothesAttributeDefNotFoundException.class);
     }
+    @Test
+    @DisplayName("Should throw NameDuplicatedException when new name already exists")
+    void updateFailWhenNameDuplicated() {
+      // given
+      UUID definitionId = UUID.randomUUID();
+      ClothesAttributeDef existing = ClothesAttributeDef.create("색상");
+      ClothesAttributeDefUpdateRequest request =
+          new ClothesAttributeDefUpdateRequest("컬러", List.of("빨강"));
+
+      given(clothesAttributeDefRepository.findById(definitionId))
+          .willReturn(Optional.of(existing));
+      given(clothesAttributeDefRepository.existsByName("컬러"))
+          .willReturn(true);
+
+      // when & then
+      assertThatThrownBy(() -> clothesAttributeDefService.update(definitionId, request))
+          .isInstanceOf(ClothesAttributeDefNameDuplicatedException.class);
+    }
+
+    @Test
+    @DisplayName("Should succeed when new name equals existing name")
+    void updateSuccessWhenSameName() {
+      // given
+      UUID definitionId = UUID.randomUUID();
+      ClothesAttributeDef existing = ClothesAttributeDef.create("색상");
+      ClothesAttributeDefUpdateRequest request =
+          new ClothesAttributeDefUpdateRequest("색상", List.of("빨강", "파랑"));
+
+      given(clothesAttributeDefRepository.findById(definitionId))
+          .willReturn(Optional.of(existing));
+      given(clothesAttributeDefValueRepository.saveAll(anyList()))
+          .willAnswer(invocation -> invocation.getArgument(0));
+
+      // when
+      ClothesAttributeDefDto result =
+          clothesAttributeDefService.update(definitionId, request);
+
+      // then
+      assertThat(result.name()).isEqualTo("색상");
+    }
   }
 }
