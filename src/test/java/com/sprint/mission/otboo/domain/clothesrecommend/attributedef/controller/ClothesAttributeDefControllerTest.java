@@ -22,6 +22,8 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 
 @WebMvcTest(ClothesAttributeDefController.class)
 class ClothesAttributeDefControllerTest {
@@ -60,6 +62,24 @@ class ClothesAttributeDefControllerTest {
           .andExpect(jsonPath("$.name").value("컬러"))
           .andExpect(jsonPath("$.selectableValues[0]").value("빨강"))
           .andExpect(jsonPath("$.selectableValues[1]").value("파랑"));
+    }
+  }
+
+  @Nested
+  @DisplayName("Delete")
+  class Delete {
+
+    @Test
+    @DisplayName("Should return 204 No Content")
+    void deleteSuccess() throws Exception {
+      // given
+      UUID definitionId = UUID.randomUUID();
+
+      // when & then
+      mockMvc.perform(delete("/api/clothes/attribute-defs/{definitionId}", definitionId))
+          .andExpect(status().isNoContent());
+
+      verify(clothesAttributeDefService).delete(definitionId);
     }
   }
 }
