@@ -21,6 +21,7 @@ import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.C
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.mapper.ClothesAttributeDefMapper;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefRepository;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefValueRepository;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.ClothesAttributeDefNotFoundException;
 import com.sprint.mission.otboo.global.dto.SortDirection;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -189,6 +190,21 @@ class ClothesAttributeDefServiceTest {
       assertThat(result.name()).isEqualTo("컬러");
       assertThat(result.selectableValues()).containsExactly("빨강", "파랑");
       verify(clothesAttributeDefValueRepository).deleteAllByDefinitionId(definitionId);
+    }
+    @Test
+    @DisplayName("Should throw NotFoundException when definition does not exist")
+    void updateFailWhenNotFound() {
+      // given
+      UUID definitionId = UUID.randomUUID();
+      ClothesAttributeDefUpdateRequest request =
+          new ClothesAttributeDefUpdateRequest("컬러", List.of("빨강"));
+
+      given(clothesAttributeDefRepository.findById(definitionId))
+          .willReturn(Optional.empty());
+
+      // when & then
+      assertThatThrownBy(() -> clothesAttributeDefService.update(definitionId, request))
+          .isInstanceOf(ClothesAttributeDefNotFoundException.class);
     }
   }
 }
