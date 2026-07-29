@@ -19,4 +19,6 @@ public interface ClothesAttributeDefValueRepository
       """)
   List<ClothesAttributeDefValue> findAllByDefinitionIds(
       @Param("definitionIds") List<UUID> definitionIds);
+
+  void deleteAllByDefinitionId(UUID definitionId);
 }

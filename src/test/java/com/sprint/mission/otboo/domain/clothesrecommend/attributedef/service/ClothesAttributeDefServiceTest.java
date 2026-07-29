@@ -168,7 +168,7 @@ class ClothesAttributeDefServiceTest {
   class Update {
 
     @Test
-    @DisplayName("Should update attribute definition name successfully")
+    @DisplayName("Should update attribute definition name and selectable values successfully")
     void updateSuccess() {
       // given
       UUID definitionId = UUID.randomUUID();
@@ -178,7 +178,8 @@ class ClothesAttributeDefServiceTest {
 
       given(clothesAttributeDefRepository.findById(definitionId))
           .willReturn(Optional.of(existing));
-
+      given(clothesAttributeDefValueRepository.saveAll(anyList()))
+          .willAnswer(invocation -> invocation.getArgument(0));
 
       // when
       ClothesAttributeDefDto result =
@@ -186,6 +187,8 @@ class ClothesAttributeDefServiceTest {
 
       // then
       assertThat(result.name()).isEqualTo("컬러");
+      assertThat(result.selectableValues()).containsExactly("빨강", "파랑");
+      verify(clothesAttributeDefValueRepository).deleteAllByDefinitionId(definitionId);
     }
   }
 }
