@@ -144,6 +144,12 @@ public class ClothesAttributeDefService {
   }
   @Transactional
   public void delete(UUID definitionId) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    ClothesAttributeDef definition = clothesAttributeDefRepository.findById(definitionId)
+        .orElseThrow(() -> ClothesAttributeDefNotFoundException.withId(definitionId));
+
+    clothesAttributeDefValueRepository.deleteAllByDefinitionId(definitionId);
+    clothesAttributeDefRepository.delete(definition);
+
+    log.info("의상 속성 정의 삭제 완료 definitionId={}", definitionId);
   }
 }
