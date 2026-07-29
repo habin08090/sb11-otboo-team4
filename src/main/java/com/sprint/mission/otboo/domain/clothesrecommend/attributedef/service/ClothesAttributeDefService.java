@@ -122,7 +122,13 @@ public class ClothesAttributeDefService {
   public ClothesAttributeDefDto update(UUID definitionId, ClothesAttributeDefUpdateRequest request) {
     ClothesAttributeDef definition = clothesAttributeDefRepository.findById(definitionId)
         .orElseThrow(() -> ClothesAttributeDefNotFoundException.withId(definitionId));
-    definition.changeName(request.name().trim());
+
+    String newName = request.name().trim();
+    if (!definition.getName().equals(newName)
+        && clothesAttributeDefRepository.existsByName(newName)) {
+      throw ClothesAttributeDefNameDuplicatedException.withName(newName);
+    }
+    definition.changeName(newName);
 
     List<String> newValues = validateSelectableValues(request.selectableValues());
     clothesAttributeDefValueRepository.deleteAllByDefinitionId(definitionId);
