@@ -45,4 +45,8 @@ public class ClothesAttributeDef {
     def.name = name;
     return def;
   }
+
+  public void changeName(String newName) {
+    this.name = newName;
+  }
 }

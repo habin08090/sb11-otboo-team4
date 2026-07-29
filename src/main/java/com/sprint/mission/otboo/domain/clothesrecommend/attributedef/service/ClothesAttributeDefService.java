@@ -119,6 +119,9 @@ public class ClothesAttributeDefService {
   }
   @Transactional
   public ClothesAttributeDefDto update(UUID definitionId, ClothesAttributeDefUpdateRequest request) {
-    throw new UnsupportedOperationException("Not implemented yet");
+    ClothesAttributeDef definition = clothesAttributeDefRepository.findById(definitionId)
+        .orElseThrow();
+    definition.changeName(request.name().trim());
+    return clothesAttributeDefMapper.toDto(definition, List.of());
   }
 }

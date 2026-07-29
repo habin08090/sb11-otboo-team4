@@ -55,6 +55,7 @@ class ClothesAttributeDefServiceTest {
   @DisplayName("의상 속성 정의 등록")
   class Create {
 
+
     @Test
     @DisplayName("정상 요청이면 정의와 선택 값이 저장된다")
     void 정상_요청이면_정의와_선택_값이_저장된다() {
@@ -74,6 +75,7 @@ class ClothesAttributeDefServiceTest {
       assertThat(result.name()).isEqualTo("색상");
       assertThat(result.selectableValues()).containsExactly("빨강", "파랑", "초록");
       assertThat(result.id()).isNotNull();
+
     }
 
     @Test
@@ -176,8 +178,7 @@ class ClothesAttributeDefServiceTest {
 
       given(clothesAttributeDefRepository.findById(definitionId))
           .willReturn(Optional.of(existing));
-      given(clothesAttributeDefRepository.existsByName("컬러"))
-          .willReturn(false);
+
 
       // when
       ClothesAttributeDefDto result =
