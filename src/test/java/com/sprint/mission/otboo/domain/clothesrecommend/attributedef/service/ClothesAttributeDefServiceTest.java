@@ -247,4 +247,26 @@ class ClothesAttributeDefServiceTest {
       assertThat(result.name()).isEqualTo("색상");
     }
   }
+  @Nested
+  @DisplayName("Delete")
+  class Delete {
+
+    @Test
+    @DisplayName("Should delete attribute definition successfully")
+    void deleteSuccess() {
+      // given
+      UUID definitionId = UUID.randomUUID();
+      ClothesAttributeDef existing = ClothesAttributeDef.create("색상");
+
+      given(clothesAttributeDefRepository.findById(definitionId))
+          .willReturn(Optional.of(existing));
+
+      // when
+      clothesAttributeDefService.delete(definitionId);
+
+      // then
+      verify(clothesAttributeDefValueRepository).deleteAllByDefinitionId(definitionId);
+      verify(clothesAttributeDefRepository).delete(existing);
+    }
+  }
 }

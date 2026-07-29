@@ -142,4 +142,8 @@ public class ClothesAttributeDefService {
 
     return clothesAttributeDefMapper.toDto(definition, savedValues);
   }
+  @Transactional
+  public void delete(UUID definitionId) {
+    throw new UnsupportedOperationException("Not implemented yet");
+  }
 }
