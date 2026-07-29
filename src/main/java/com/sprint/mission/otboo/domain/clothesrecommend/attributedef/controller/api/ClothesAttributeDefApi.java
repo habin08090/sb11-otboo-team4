@@ -73,4 +73,17 @@ public interface ClothesAttributeDefApi {
   ResponseEntity<ClothesAttributeDefDto> update(
       UUID definitionId,
       ClothesAttributeDefUpdateRequest request);
+
+  @Operation(summary = "의상 속성 정의 삭제", description = "의상 속성 정의 삭제 API")
+  @ApiResponses({
+      @ApiResponse(
+          responseCode = "204",
+          description = "의상 속성 정의 삭제 성공"),
+      @ApiResponse(
+          responseCode = "400",
+          description = "의상 속성 정의 수정 실패",
+          content = @Content(
+              schema = @Schema(implementation = ErrorResponse.class)))
+  })
+  ResponseEntity<Void> delete(UUID definitionId);
 }

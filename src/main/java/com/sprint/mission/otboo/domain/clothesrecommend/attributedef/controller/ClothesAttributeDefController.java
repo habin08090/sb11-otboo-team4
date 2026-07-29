@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 @RequiredArgsConstructor
 @RequestMapping("/api/clothes/attribute-defs")
@@ -49,5 +50,11 @@ public class ClothesAttributeDefController implements ClothesAttributeDefApi {
       @PathVariable UUID definitionId,
       @Valid @RequestBody ClothesAttributeDefUpdateRequest request) {
     return ResponseEntity.ok(clothesAttributeDefService.update(definitionId, request));
+  }
+  @Override
+  @DeleteMapping("/{definitionId}")
+  public ResponseEntity<Void> delete(@PathVariable UUID definitionId) {
+    clothesAttributeDefService.delete(definitionId);
+    return ResponseEntity.noContent().build();
   }
 }
