@@ -10,6 +10,7 @@ import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.Clot
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.ClothesAttributeDefNameDuplicatedException;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.mapper.ClothesAttributeDefMapper;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefRepository;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.ClothesAttributeDefNotFoundException;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefValueRepository;
 import com.sprint.mission.otboo.global.dto.SortDirection;
 import java.util.List;
@@ -120,7 +121,7 @@ public class ClothesAttributeDefService {
   @Transactional
   public ClothesAttributeDefDto update(UUID definitionId, ClothesAttributeDefUpdateRequest request) {
     ClothesAttributeDef definition = clothesAttributeDefRepository.findById(definitionId)
-        .orElseThrow();
+        .orElseThrow(() -> ClothesAttributeDefNotFoundException.withId(definitionId));
     definition.changeName(request.name().trim());
 
     List<String> newValues = validateSelectableValues(request.selectableValues());
