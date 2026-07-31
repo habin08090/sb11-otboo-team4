@@ -8,11 +8,12 @@ import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.Clothes
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDef;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDefValue;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.ClothesAttributeDefNameDuplicatedException;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.ClothesAttributeDefNotFoundException;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.mapper.ClothesAttributeDefMapper;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefRepository;
-import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.ClothesAttributeDefNotFoundException;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefValueRepository;
 import com.sprint.mission.otboo.global.dto.SortDirection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -20,11 +21,10 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.LinkedHashSet;
-import org.springframework.dao.DataIntegrityViolationException;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -118,8 +118,10 @@ public class ClothesAttributeDefService {
             : Sort.Direction.ASC;
     return Sort.by(direction, property);
   }
+
   @Transactional
-  public ClothesAttributeDefDto update(UUID definitionId, ClothesAttributeDefUpdateRequest request) {
+  public ClothesAttributeDefDto update(UUID definitionId,
+      ClothesAttributeDefUpdateRequest request) {
     ClothesAttributeDef definition = clothesAttributeDefRepository.findById(definitionId)
         .orElseThrow(() -> ClothesAttributeDefNotFoundException.withId(definitionId));
 
@@ -129,6 +131,16 @@ public class ClothesAttributeDefService {
       throw ClothesAttributeDefNameDuplicatedException.withName(newName);
     }
     definition.changeName(newName);
+
+    try {
+      clothesAttributeDefRepository.saveAndFlush(definition);
+    } catch (DataIntegrityViolationException e) {
+      if (e.getMessage() != null
+          && e.getMessage().contains("uq_clothes_attribute_defs_name")) {
+        throw ClothesAttributeDefNameDuplicatedException.withName(newName);
+      }
+      throw e;
+    }
 
     List<String> newValues = validateSelectableValues(request.selectableValues());
     clothesAttributeDefValueRepository.deleteAllByDefinitionId(definitionId);
@@ -142,6 +154,7 @@ public class ClothesAttributeDefService {
 
     return clothesAttributeDefMapper.toDto(definition, savedValues);
   }
+
   @Transactional
   public void delete(UUID definitionId) {
     ClothesAttributeDef definition = clothesAttributeDefRepository.findById(definitionId)

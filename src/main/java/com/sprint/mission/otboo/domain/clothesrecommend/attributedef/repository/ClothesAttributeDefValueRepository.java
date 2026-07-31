@@ -4,6 +4,7 @@ import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.Clot
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -20,5 +21,7 @@ public interface ClothesAttributeDefValueRepository
   List<ClothesAttributeDefValue> findAllByDefinitionIds(
       @Param("definitionIds") List<UUID> definitionIds);
 
-  void deleteAllByDefinitionId(UUID definitionId);
+  @Modifying
+  @Query("delete from ClothesAttributeDefValue v where v.definition.id = :definitionId")
+  void deleteAllByDefinitionId(@Param("definitionId") UUID definitionId);
 }

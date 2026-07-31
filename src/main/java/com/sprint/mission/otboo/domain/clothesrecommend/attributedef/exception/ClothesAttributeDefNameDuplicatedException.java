@@ -5,11 +5,11 @@ import org.springframework.http.HttpStatus;
 
 public class ClothesAttributeDefNameDuplicatedException extends AttributeDefException {
 
+  private static final HttpStatus STATUS = HttpStatus.CONFLICT;
+  private static final String MESSAGE = "이미 존재하는 의상 속성 정의 이름입니다.";
+
   private ClothesAttributeDefNameDuplicatedException(Map<String, Object> details) {
-    super(
-        HttpStatus.CONFLICT,
-        AttributeDefErrorCode.ATTRIBUTE_DEF_NAME_DUPLICATED.getMessage(),
-        details);
+    super(STATUS, MESSAGE, details);
   }
 
   public static ClothesAttributeDefNameDuplicatedException withName(String name) {

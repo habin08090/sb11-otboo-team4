@@ -16,7 +16,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
 @EntityListeners(AuditingEntityListener.class)
 @Table(
     name = "clothes_attribute_defs",
@@ -24,7 +24,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
         name = "UQ_clothes_attribute_defs_name",
         columnNames = "name"))
 @Entity
-public class ClothesAttributeDef {
+public class ClothesAttributeDef{
 
   @Id
   @Column(columnDefinition = "uuid", nullable = false, updatable = false)

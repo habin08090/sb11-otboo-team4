@@ -57,7 +57,7 @@ public interface ClothesAttributeDefApi {
   ResponseEntity<List<ClothesAttributeDefDto>> getAll(
       @ParameterObject ClothesAttributeDefListParams params);
 
-  @Operation(summary = "의상 속성 정의 수정", description = "의상 속성 정의 수제 API")
+  @Operation(summary = "의상 속성 정의 수정", description = "의상 속성 정의 수정 API")
   @ApiResponses({
       @ApiResponse(
           responseCode = "200",
@@ -67,6 +67,16 @@ public interface ClothesAttributeDefApi {
       @ApiResponse(
           responseCode = "400",
           description = "의상 속성 정의 수정 실패",
+          content = @Content(
+              schema = @Schema(implementation = ErrorResponse.class))),
+      @ApiResponse(
+          responseCode = "404",
+          description = "의상 속성 정의를 찾을 수 없음",
+          content = @Content(
+              schema = @Schema(implementation = ErrorResponse.class))),
+      @ApiResponse(
+          responseCode = "409",
+          description = "의상 속성 정의 이름 중복",
           content = @Content(
               schema = @Schema(implementation = ErrorResponse.class)))
   })
@@ -81,7 +91,17 @@ public interface ClothesAttributeDefApi {
           description = "의상 속성 정의 삭제 성공"),
       @ApiResponse(
           responseCode = "400",
-          description = "의상 속성 정의 수정 실패",
+          description = "의상 속성 정의 삭제 실패",
+          content = @Content(
+              schema = @Schema(implementation = ErrorResponse.class))),
+      @ApiResponse(
+          responseCode = "404",
+          description = "의상 속성 정의를 찾을 수 없음",
+          content = @Content(
+              schema = @Schema(implementation = ErrorResponse.class))),
+      @ApiResponse(
+          responseCode = "409",
+          description = "사용 중인 의상 속성 정의 삭제 불가",
           content = @Content(
               schema = @Schema(implementation = ErrorResponse.class)))
   })
