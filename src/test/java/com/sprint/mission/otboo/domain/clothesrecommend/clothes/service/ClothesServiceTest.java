@@ -4,13 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.when;
 
-import com.navercorp.fixturemonkey.FixtureMonkey;
-import com.navercorp.fixturemonkey.api.plugin.SimpleValueJqwikPlugin;
-import com.navercorp.fixturemonkey.jakarta.validation.plugin.JakartaValidationPlugin;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDef;
-import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDefValue;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefRepository;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefValueRepository;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesAttributeDto;
@@ -27,7 +24,6 @@ import com.sprint.mission.otboo.global.dto.CursorPageResponse;
 import com.sprint.mission.otboo.global.dto.SortDirection;
 import java.util.List;
 import java.util.UUID;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -38,8 +34,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesServiceTest {
-
-  static FixtureMonkey fixtureMonkey;
 
   @InjectMocks
   ClothesService clothesService;
@@ -59,14 +53,6 @@ class ClothesServiceTest {
   @Mock
   ClothesMapper clothesMapper;
 
-  @BeforeAll
-  static void setUpFixtureMonkey() {
-    fixtureMonkey = FixtureMonkey.builder()
-        .plugin(new JakartaValidationPlugin())
-        .plugin(new SimpleValueJqwikPlugin())
-        .build();
-  }
-
   @Nested
   @DisplayName("Create")
   class Create {
@@ -75,20 +61,17 @@ class ClothesServiceTest {
     @DisplayName("속성 없이 의상을 등록하면 빈 속성 목록으로 성공한다")
     void 속성_없이_의상을_등록하면_빈_속성_목록으로_성공한다() {
       // given
-      ClothesCreateRequest request = fixtureMonkey.giveMeBuilder(ClothesCreateRequest.class)
-          .set("ownerId", UUID.randomUUID())
-          .set("name", "테스트 상의")
-          .set("type", ClothesType.TOP)
-          .set("attributes", List.of())
-          .sample();
+      UUID ownerId = UUID.randomUUID();
+      ClothesCreateRequest request = new ClothesCreateRequest(
+          ownerId, "테스트 상의", ClothesType.TOP, List.of());
 
-      Clothes savedClothes = Clothes.create(request.ownerId(), request.name(), request.type());
-      when(clothesRepository.save(any(Clothes.class))).thenReturn(savedClothes);
+      Clothes savedClothes = Clothes.create(ownerId, "테스트 상의", ClothesType.TOP);
+      when(clothesRepository.save(any())).thenReturn(savedClothes);
 
       ClothesDto expectedDto = new ClothesDto(
-          savedClothes.getId(), request.ownerId(), request.name(),
-          null, request.type(), List.of());
-      when(clothesMapper.toDto(any(Clothes.class), anyList(), any())).thenReturn(expectedDto);
+          savedClothes.getId(), ownerId, "테스트 상의",
+          null, ClothesType.TOP, List.of());
+      when(clothesMapper.toDto(any(), anyList(), anyMap())).thenReturn(expectedDto);
 
       // when
       ClothesDto result = clothesService.create(request);
@@ -103,18 +86,16 @@ class ClothesServiceTest {
     @DisplayName("속성과 함께 의상을 등록하면 속성이 포함된 결과를 반환한다")
     void 속성과_함께_의상을_등록하면_속성이_포함된_결과를_반환한다() {
       // given
-      UUID defId = UUID.randomUUID();
-      ClothesCreateRequest request = fixtureMonkey.giveMeBuilder(ClothesCreateRequest.class)
-          .set("ownerId", UUID.randomUUID())
-          .set("name", "테스트 하의")
-          .set("type", ClothesType.BOTTOM)
-          .set("attributes", List.of(new ClothesAttributeDto(defId, "블랙")))
-          .sample();
-
-      Clothes savedClothes = Clothes.create(request.ownerId(), request.name(), request.type());
-      when(clothesRepository.save(any(Clothes.class))).thenReturn(savedClothes);
-
+      UUID ownerId = UUID.randomUUID();
       ClothesAttributeDef definition = ClothesAttributeDef.create("색상");
+
+      ClothesCreateRequest request = new ClothesCreateRequest(
+          ownerId, "테스트 하의", ClothesType.BOTTOM,
+          List.of(new ClothesAttributeDto(definition.getId(), "블랙")));
+
+      Clothes savedClothes = Clothes.create(ownerId, "테스트 하의", ClothesType.BOTTOM);
+      when(clothesRepository.save(any())).thenReturn(savedClothes);
+
       when(clothesAttributeDefRepository.findAllById(anyList()))
           .thenReturn(List.of(definition));
 
@@ -127,9 +108,9 @@ class ClothesServiceTest {
           .thenReturn(List.of());
 
       ClothesDto expectedDto = new ClothesDto(
-          savedClothes.getId(), request.ownerId(), request.name(),
-          null, request.type(), List.of());
-      when(clothesMapper.toDto(any(Clothes.class), anyList(), any())).thenReturn(expectedDto);
+          savedClothes.getId(), ownerId, "테스트 하의",
+          null, ClothesType.BOTTOM, List.of());
+      when(clothesMapper.toDto(any(), anyList(), anyMap())).thenReturn(expectedDto);
 
       // when
       ClothesDto result = clothesService.create(request);
@@ -143,16 +124,15 @@ class ClothesServiceTest {
     @DisplayName("존재하지 않는 속성 정의 ID를 전달하면 예외가 발생한다")
     void 존재하지_않는_속성_정의_ID를_전달하면_예외가_발생한다() {
       // given
+      UUID ownerId = UUID.randomUUID();
       UUID invalidDefId = UUID.randomUUID();
-      ClothesCreateRequest request = fixtureMonkey.giveMeBuilder(ClothesCreateRequest.class)
-          .set("ownerId", UUID.randomUUID())
-          .set("name", "테스트 옷")
-          .set("type", ClothesType.TOP)
-          .set("attributes", List.of(new ClothesAttributeDto(invalidDefId, "빨강")))
-          .sample();
 
-      Clothes savedClothes = Clothes.create(request.ownerId(), request.name(), request.type());
-      when(clothesRepository.save(any(Clothes.class))).thenReturn(savedClothes);
+      ClothesCreateRequest request = new ClothesCreateRequest(
+          ownerId, "테스트 옷", ClothesType.TOP,
+          List.of(new ClothesAttributeDto(invalidDefId, "빨강")));
+
+      Clothes savedClothes = Clothes.create(ownerId, "테스트 옷", ClothesType.TOP);
+      when(clothesRepository.save(any())).thenReturn(savedClothes);
       when(clothesAttributeDefRepository.findAllById(anyList())).thenReturn(List.of());
 
       // when & then
@@ -205,14 +185,12 @@ class ClothesServiceTest {
 
       when(clothesAttributeRepository.findAllByClothesIdsWithDefinition(anyList()))
           .thenReturn(List.of());
-      when(clothesAttributeDefValueRepository.findAllByDefinitionIds(anyList()))
-          .thenReturn(List.of());
 
       ClothesDto dto1 = new ClothesDto(
           clothes1.getId(), ownerId, "상의1", null, ClothesType.TOP, List.of());
       ClothesDto dto2 = new ClothesDto(
           clothes2.getId(), ownerId, "하의1", null, ClothesType.BOTTOM, List.of());
-      when(clothesMapper.toDto(any(Clothes.class), anyList(), any()))
+      when(clothesMapper.toDto(any(), anyList(), anyMap()))
           .thenReturn(dto1, dto2);
 
       // when
