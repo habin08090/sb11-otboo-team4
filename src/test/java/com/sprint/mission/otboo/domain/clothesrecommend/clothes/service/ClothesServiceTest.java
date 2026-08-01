@@ -1,0 +1,228 @@
+package com.sprint.mission.otboo.domain.clothesrecommend.clothes.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.when;
+
+import com.navercorp.fixturemonkey.FixtureMonkey;
+import com.navercorp.fixturemonkey.api.plugin.SimpleValueJqwikPlugin;
+import com.navercorp.fixturemonkey.jakarta.validation.plugin.JakartaValidationPlugin;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDef;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDefValue;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefRepository;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefValueRepository;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesAttributeDto;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesCreateRequest;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesDto;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesListParams;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.entity.Clothes;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.entity.ClothesAttribute;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.mapper.ClothesMapper;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.repository.ClothesAttributeRepository;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.repository.ClothesRepository;
+import com.sprint.mission.otboo.global.dto.CursorPageResponse;
+import com.sprint.mission.otboo.global.dto.SortDirection;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class ClothesServiceTest {
+
+  static FixtureMonkey fixtureMonkey;
+
+  @InjectMocks
+  ClothesService clothesService;
+
+  @Mock
+  ClothesRepository clothesRepository;
+
+  @Mock
+  ClothesAttributeRepository clothesAttributeRepository;
+
+  @Mock
+  ClothesAttributeDefRepository clothesAttributeDefRepository;
+
+  @Mock
+  ClothesAttributeDefValueRepository clothesAttributeDefValueRepository;
+
+  @Mock
+  ClothesMapper clothesMapper;
+
+  @BeforeAll
+  static void setUpFixtureMonkey() {
+    fixtureMonkey = FixtureMonkey.builder()
+        .plugin(new JakartaValidationPlugin())
+        .plugin(new SimpleValueJqwikPlugin())
+        .build();
+  }
+
+  @Nested
+  @DisplayName("Create")
+  class Create {
+
+    @Test
+    @DisplayName("속성 없이 의상을 등록하면 빈 속성 목록으로 성공한다")
+    void 속성_없이_의상을_등록하면_빈_속성_목록으로_성공한다() {
+      // given
+      ClothesCreateRequest request = fixtureMonkey.giveMeBuilder(ClothesCreateRequest.class)
+          .set("ownerId", UUID.randomUUID())
+          .set("name", "테스트 상의")
+          .set("type", ClothesType.TOP)
+          .set("attributes", List.of())
+          .sample();
+
+      Clothes savedClothes = Clothes.create(request.ownerId(), request.name(), request.type());
+      when(clothesRepository.save(any(Clothes.class))).thenReturn(savedClothes);
+
+      ClothesDto expectedDto = new ClothesDto(
+          savedClothes.getId(), request.ownerId(), request.name(),
+          null, request.type(), List.of());
+      when(clothesMapper.toDto(any(Clothes.class), anyList(), any())).thenReturn(expectedDto);
+
+      // when
+      ClothesDto result = clothesService.create(request);
+
+      // then
+      assertThat(result.name()).isEqualTo("테스트 상의");
+      assertThat(result.type()).isEqualTo(ClothesType.TOP);
+      assertThat(result.attributes()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("속성과 함께 의상을 등록하면 속성이 포함된 결과를 반환한다")
+    void 속성과_함께_의상을_등록하면_속성이_포함된_결과를_반환한다() {
+      // given
+      UUID defId = UUID.randomUUID();
+      ClothesCreateRequest request = fixtureMonkey.giveMeBuilder(ClothesCreateRequest.class)
+          .set("ownerId", UUID.randomUUID())
+          .set("name", "테스트 하의")
+          .set("type", ClothesType.BOTTOM)
+          .set("attributes", List.of(new ClothesAttributeDto(defId, "블랙")))
+          .sample();
+
+      Clothes savedClothes = Clothes.create(request.ownerId(), request.name(), request.type());
+      when(clothesRepository.save(any(Clothes.class))).thenReturn(savedClothes);
+
+      ClothesAttributeDef definition = ClothesAttributeDef.create("색상");
+      when(clothesAttributeDefRepository.findAllById(anyList()))
+          .thenReturn(List.of(definition));
+
+      ClothesAttribute savedAttribute =
+          ClothesAttribute.create(savedClothes.getId(), definition, "블랙");
+      when(clothesAttributeRepository.saveAll(anyList()))
+          .thenReturn(List.of(savedAttribute));
+
+      when(clothesAttributeDefValueRepository.findAllByDefinitionIds(anyList()))
+          .thenReturn(List.of());
+
+      ClothesDto expectedDto = new ClothesDto(
+          savedClothes.getId(), request.ownerId(), request.name(),
+          null, request.type(), List.of());
+      when(clothesMapper.toDto(any(Clothes.class), anyList(), any())).thenReturn(expectedDto);
+
+      // when
+      ClothesDto result = clothesService.create(request);
+
+      // then
+      assertThat(result.name()).isEqualTo("테스트 하의");
+      assertThat(result.type()).isEqualTo(ClothesType.BOTTOM);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 속성 정의 ID를 전달하면 예외가 발생한다")
+    void 존재하지_않는_속성_정의_ID를_전달하면_예외가_발생한다() {
+      // given
+      UUID invalidDefId = UUID.randomUUID();
+      ClothesCreateRequest request = fixtureMonkey.giveMeBuilder(ClothesCreateRequest.class)
+          .set("ownerId", UUID.randomUUID())
+          .set("name", "테스트 옷")
+          .set("type", ClothesType.TOP)
+          .set("attributes", List.of(new ClothesAttributeDto(invalidDefId, "빨강")))
+          .sample();
+
+      Clothes savedClothes = Clothes.create(request.ownerId(), request.name(), request.type());
+      when(clothesRepository.save(any(Clothes.class))).thenReturn(savedClothes);
+      when(clothesAttributeDefRepository.findAllById(anyList())).thenReturn(List.of());
+
+      // when & then
+      assertThatThrownBy(() -> clothesService.create(request))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("존재하지 않는 속성 정의");
+    }
+  }
+
+  @Nested
+  @DisplayName("GetClothes")
+  class GetClothes {
+
+    @Test
+    @DisplayName("조회 결과가 없으면 빈 페이지를 반환한다")
+    void 조회_결과가_없으면_빈_페이지를_반환한다() {
+      // given
+      ClothesListParams params = new ClothesListParams(
+          null, null, 10, null, UUID.randomUUID());
+
+      CursorPageResponse<Clothes> emptyPage = new CursorPageResponse<>(
+          List.of(), null, null, false, 0L,
+          "createdAt", SortDirection.DESCENDING);
+      when(clothesRepository.findClothes(params)).thenReturn(emptyPage);
+
+      // when
+      CursorPageResponse<ClothesDto> result = clothesService.getClothes(params);
+
+      // then
+      assertThat(result.data()).isEmpty();
+      assertThat(result.hasNext()).isFalse();
+      assertThat(result.totalCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("조회 결과가 있으면 속성을 포함한 DTO 목록을 반환한다")
+    void 조회_결과가_있으면_속성을_포함한_DTO_목록을_반환한다() {
+      // given
+      UUID ownerId = UUID.randomUUID();
+      ClothesListParams params = new ClothesListParams(
+          null, null, 10, null, ownerId);
+
+      Clothes clothes1 = Clothes.create(ownerId, "상의1", ClothesType.TOP);
+      Clothes clothes2 = Clothes.create(ownerId, "하의1", ClothesType.BOTTOM);
+
+      CursorPageResponse<Clothes> page = new CursorPageResponse<>(
+          List.of(clothes1, clothes2), null, null, false, 2L,
+          "createdAt", SortDirection.DESCENDING);
+      when(clothesRepository.findClothes(params)).thenReturn(page);
+
+      when(clothesAttributeRepository.findAllByClothesIdsWithDefinition(anyList()))
+          .thenReturn(List.of());
+      when(clothesAttributeDefValueRepository.findAllByDefinitionIds(anyList()))
+          .thenReturn(List.of());
+
+      ClothesDto dto1 = new ClothesDto(
+          clothes1.getId(), ownerId, "상의1", null, ClothesType.TOP, List.of());
+      ClothesDto dto2 = new ClothesDto(
+          clothes2.getId(), ownerId, "하의1", null, ClothesType.BOTTOM, List.of());
+      when(clothesMapper.toDto(any(Clothes.class), anyList(), any()))
+          .thenReturn(dto1, dto2);
+
+      // when
+      CursorPageResponse<ClothesDto> result = clothesService.getClothes(params);
+
+      // then
+      assertThat(result.data()).hasSize(2);
+      assertThat(result.data().get(0).name()).isEqualTo("상의1");
+      assertThat(result.data().get(1).name()).isEqualTo("하의1");
+      assertThat(result.totalCount()).isEqualTo(2L);
+    }
+  }
+}
