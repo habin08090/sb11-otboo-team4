@@ -123,15 +123,7 @@ public class ClothesService {
             defValuesByDefId))
         .toList();
   }
-  @Transactional
-  public ClothesDto update(UUID clothesId, ClothesUpdateRequest request, MultipartFile image) {
-    throw new UnsupportedOperationException("미구현");
-  }
 
-  @Transactional
-  public void delete(UUID clothesId) {
-    throw new UnsupportedOperationException("미구현");
-  }
 
   @Transactional
   public ClothesDto update(UUID clothesId, ClothesUpdateRequest request, MultipartFile image) {
