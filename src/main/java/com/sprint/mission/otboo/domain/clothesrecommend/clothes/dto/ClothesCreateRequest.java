@@ -1,5 +1,6 @@
 package com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -10,5 +11,5 @@ public record ClothesCreateRequest(
     @NotNull UUID ownerId,
     @NotBlank @Size(max = 100) String name,
     @NotNull ClothesType type,
-    List<ClothesAttributeDto> attributes
+    @Valid List<ClothesAttributeDto> attributes
 ) {}

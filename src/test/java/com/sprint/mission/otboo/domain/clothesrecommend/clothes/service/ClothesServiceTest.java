@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.Mockito.when;
 
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDef;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.ClothesAttributeDefNotFoundException;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefRepository;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefValueRepository;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesAttributeDto;
@@ -54,7 +55,7 @@ class ClothesServiceTest {
   ClothesMapper clothesMapper;
 
   @Nested
-  @DisplayName("Create")
+  @DisplayName("의상 등록")
   class Create {
 
     @Test
@@ -74,7 +75,7 @@ class ClothesServiceTest {
       when(clothesMapper.toDto(any(), anyList(), anyMap())).thenReturn(expectedDto);
 
       // when
-      ClothesDto result = clothesService.create(request);
+      ClothesDto result = clothesService.create(request, null);
 
       // then
       assertThat(result.name()).isEqualTo("테스트 상의");
@@ -113,7 +114,7 @@ class ClothesServiceTest {
       when(clothesMapper.toDto(any(), anyList(), anyMap())).thenReturn(expectedDto);
 
       // when
-      ClothesDto result = clothesService.create(request);
+      ClothesDto result = clothesService.create(request, null);
 
       // then
       assertThat(result.name()).isEqualTo("테스트 하의");
@@ -136,14 +137,13 @@ class ClothesServiceTest {
       when(clothesAttributeDefRepository.findAllById(anyList())).thenReturn(List.of());
 
       // when & then
-      assertThatThrownBy(() -> clothesService.create(request))
-          .isInstanceOf(IllegalArgumentException.class)
-          .hasMessageContaining("존재하지 않는 속성 정의");
+      assertThatThrownBy(() -> clothesService.create(request, null))
+          .isInstanceOf(ClothesAttributeDefNotFoundException.class);
     }
   }
 
   @Nested
-  @DisplayName("GetClothes")
+  @DisplayName("의상 목록 조회")
   class GetClothes {
 
     @Test

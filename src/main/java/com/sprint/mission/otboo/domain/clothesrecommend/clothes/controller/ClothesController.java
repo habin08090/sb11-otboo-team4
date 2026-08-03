@@ -29,6 +29,7 @@ public class ClothesController implements ClothesApi {
   @GetMapping
   public ResponseEntity<CursorPageResponse<ClothesDto>> getClothes(
       @Valid ClothesListParams params) {
+    // TODO: SecurityContext에서 인증된 사용자 ID를 추출하여 ownerId 검증 (JWT 통합 후 구현)
     return ResponseEntity.ok(clothesService.getClothes(params));
   }
 
@@ -37,7 +38,8 @@ public class ClothesController implements ClothesApi {
   public ResponseEntity<ClothesDto> create(
       @RequestPart @Valid ClothesCreateRequest request,
       @RequestPart(required = false) MultipartFile image) {
-    ClothesDto created = clothesService.create(request);
+    // TODO: SecurityContext에서 인증된 사용자 ID를 추출하여 ownerId 검증 (JWT 통합 후 구현)
+    ClothesDto created = clothesService.create(request, image);
     return ResponseEntity.status(HttpStatus.CREATED).body(created);
   }
 }

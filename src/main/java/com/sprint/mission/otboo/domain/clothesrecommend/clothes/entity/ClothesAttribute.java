@@ -6,6 +6,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.ForeignKey;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -32,8 +34,9 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 public class ClothesAttribute {
 
   @Id
+  @GeneratedValue(strategy = GenerationType.UUID)
   @Column(columnDefinition = "uuid", nullable = false, updatable = false)
-  private UUID id = UUID.randomUUID();
+  private UUID id;
 
   @CreatedDate
   @Column(nullable = false, updatable = false)

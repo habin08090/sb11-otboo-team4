@@ -26,22 +26,20 @@ class ClothesMapperTest {
   }
 
   @Nested
-  @DisplayName("ToDto")
+  @DisplayName("DTO 변환")
   class ToDto {
 
     @Test
     @DisplayName("속성이 없는 의상을 DTO로 변환하면 빈 속성 목록을 반환한다")
     void 속성이_없는_의상을_DTO로_변환하면_빈_속성_목록을_반환한다() {
       // given
-      UUID ownerId = UUID.randomUUID();
-      Clothes clothes = Clothes.create(ownerId, "기본 티셔츠", ClothesType.TOP);
+      Clothes clothes = Clothes.create(UUID.randomUUID(), "기본 티셔츠", ClothesType.TOP);
 
       // when
       ClothesDto result = clothesMapper.toDto(clothes, List.of(), Map.of());
 
       // then
       assertThat(result.id()).isEqualTo(clothes.getId());
-      assertThat(result.ownerId()).isEqualTo(ownerId);
       assertThat(result.name()).isEqualTo("기본 티셔츠");
       assertThat(result.type()).isEqualTo(ClothesType.TOP);
       assertThat(result.attributes()).isEmpty();
@@ -51,8 +49,7 @@ class ClothesMapperTest {
     @DisplayName("속성이 있는 의상을 DTO로 변환하면 정의 정보가 포함된 속성을 반환한다")
     void 속성이_있는_의상을_DTO로_변환하면_정의_정보가_포함된_속성을_반환한다() {
       // given
-      UUID ownerId = UUID.randomUUID();
-      Clothes clothes = Clothes.create(ownerId, "검정 바지", ClothesType.BOTTOM);
+      Clothes clothes = Clothes.create(UUID.randomUUID(), "검정 바지", ClothesType.BOTTOM);
 
       ClothesAttributeDef colorDef = ClothesAttributeDef.create("색상");
       ClothesAttribute attribute =
