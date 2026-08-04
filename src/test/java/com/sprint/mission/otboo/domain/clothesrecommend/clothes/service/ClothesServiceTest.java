@@ -38,6 +38,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesServiceTest {
@@ -221,7 +222,7 @@ class ClothesServiceTest {
       UUID clothesId = UUID.randomUUID();
       UUID ownerId = UUID.randomUUID();
       Clothes clothes = Clothes.create(ownerId, "반팔티", ClothesType.TOP);
-      setField(clothes, "id", clothesId);
+      ReflectionTestUtils.setField(clothes, "id", clothesId);
 
       given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
 
@@ -261,12 +262,11 @@ class ClothesServiceTest {
       UUID clothesId = UUID.randomUUID();
       UUID ownerId = UUID.randomUUID();
       Clothes clothes = Clothes.create(ownerId, "반팔티", ClothesType.TOP);
-      setField(clothes, "id", clothesId);
+      ReflectionTestUtils.setField(clothes, "id", clothesId);
 
       given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
       given(clothesAttributeRepository.findAllByClothesIdWithDefinition(clothesId))
           .willReturn(List.of());
-
 
       ClothesUpdateRequest request = new ClothesUpdateRequest("긴팔티", null, null);
 
@@ -303,7 +303,7 @@ class ClothesServiceTest {
       // given
       UUID clothesId = UUID.randomUUID();
       Clothes clothes = Clothes.create(UUID.randomUUID(), "반팔티", ClothesType.TOP);
-      setField(clothes, "id", clothesId);
+      ReflectionTestUtils.setField(clothes, "id", clothesId);
       clothes.delete();
 
       given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
@@ -326,7 +326,7 @@ class ClothesServiceTest {
       // given
       UUID clothesId = UUID.randomUUID();
       Clothes clothes = Clothes.create(UUID.randomUUID(), "반팔티", ClothesType.TOP);
-      setField(clothes, "id", clothesId);
+      ReflectionTestUtils.setField(clothes, "id", clothesId);
 
       given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
 
@@ -355,7 +355,7 @@ class ClothesServiceTest {
       // given
       UUID clothesId = UUID.randomUUID();
       Clothes clothes = Clothes.create(UUID.randomUUID(), "반팔티", ClothesType.TOP);
-      setField(clothes, "id", clothesId);
+      ReflectionTestUtils.setField(clothes, "id", clothesId);
       clothes.delete();
 
       given(clothesRepository.findById(clothesId)).willReturn(Optional.of(clothes));
@@ -363,16 +363,6 @@ class ClothesServiceTest {
       // when & then
       assertThatThrownBy(() -> clothesService.delete(clothesId))
           .isInstanceOf(ClothesNotFoundException.class);
-    }
-  }
-
-  private void setField(Object target, String fieldName, Object value) {
-    try {
-      java.lang.reflect.Field field = target.getClass().getDeclaredField(fieldName);
-      field.setAccessible(true);
-      field.set(target, value);
-    } catch (Exception e) {
-      throw new RuntimeException(e);
     }
   }
 }

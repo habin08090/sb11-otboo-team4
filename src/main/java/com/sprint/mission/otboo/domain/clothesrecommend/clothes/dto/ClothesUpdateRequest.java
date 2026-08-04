@@ -1,11 +1,11 @@
 package com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record ClothesUpdateRequest(
-    String name,
+    @Size(max = 50) String name,
     ClothesType type,
-    List<ClothesAttributeDto> attributes
-) {
-  // 전부 nullable — 부분 수정(partial update)
-}
+    @Valid List<ClothesAttributeDto> attributes
+) {}

@@ -50,8 +50,7 @@ public class ClothesService {
 
     if (image != null && !image.isEmpty()) {
       // TODO: S3 연동 후 이미지 업로드 구현
-      log.info("이미지 파일 수신됨 (아직 저장 미구현) fileName={}, size={}",
-          image.getOriginalFilename(), image.getSize());
+      log.info("이미지 파일 수신됨 (아직 저장 미구현) size={}", image.getSize());
     }
 
     List<ClothesAttribute> savedAttributes = saveAttributes(clothes.getId(),
@@ -140,8 +139,7 @@ public class ClothesService {
 
     if (image != null && !image.isEmpty()) {
       // TODO: S3 연동 후 이미지 업로드 구현
-      log.info("이미지 파일 수신됨 (아직 저장 미구현) fileName={}, size={}",
-          image.getOriginalFilename(), image.getSize());
+      log.info("이미지 파일 수신됨 (아직 저장 미구현) size={}", image.getSize());;
     }
 
     List<ClothesAttribute> savedAttributes;
