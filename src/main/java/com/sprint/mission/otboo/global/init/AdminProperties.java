@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
-@ConfigurationProperties(prefix = "app.admin")
+@ConfigurationProperties(prefix = "otboo.admin")
 @Validated
 public record AdminProperties(
     @NotBlank String name,

@@ -87,15 +87,22 @@ class FollowCustomRepositoryTest {
       User f1 = persistUser("팔로위1");
       User f2 = persistUser("팔로위2");
       User f3 = persistUser("팔로위3");
-      followRepository.save(Follow.create(follower.getId(), f1.getId()));
-      followRepository.save(Follow.create(follower.getId(), f2.getId()));
+      Follow follow1 = followRepository.save(Follow.create(follower.getId(), f1.getId()));
+      Follow follow2 = followRepository.save(Follow.create(follower.getId(), f2.getId()));
       Follow third = followRepository.save(Follow.create(follower.getId(), f3.getId()));
+      testEntityManager.flush();
+
+      // 명시적 시간 부여 → tie-break 방지
+      setCreatedAt(follow1.getId(), Instant.parse("2026-07-28T00:00:01Z"));
+      setCreatedAt(follow2.getId(), Instant.parse("2026-07-28T00:00:02Z"));
+      setCreatedAt(third.getId(), Instant.parse("2026-07-28T00:00:03Z"));
       testEntityManager.flush();
       testEntityManager.clear();
 
-      // createdAt DESC 순서: f3 → f2 → f1, 커서 = third
+      // createdAt DESC: f3(t3) → f2(t2) → f1(t1), 커서 = third(t3)
       FollowingListParams params = new FollowingListParams(
-          follower.getId(), third.getCreatedAt().toString(), third.getId(), 10, null);
+          follower.getId(), Instant.parse("2026-07-28T00:00:03Z").toString(),
+          third.getId(), 10, null);
 
       // when
       CursorPageResponse<Follow> result = followRepository.findFollowings(params);
@@ -269,15 +276,21 @@ class FollowCustomRepositoryTest {
       User f1 = persistUser("팔로워1");
       User f2 = persistUser("팔로워2");
       User f3 = persistUser("팔로워3");
-      followRepository.save(Follow.create(f1.getId(), followee.getId()));
-      followRepository.save(Follow.create(f2.getId(), followee.getId()));
+      Follow follow1 = followRepository.save(Follow.create(f1.getId(), followee.getId()));
+      Follow follow2 = followRepository.save(Follow.create(f2.getId(), followee.getId()));
       Follow third = followRepository.save(Follow.create(f3.getId(), followee.getId()));
+      testEntityManager.flush();
+
+      setCreatedAt(follow1.getId(), Instant.parse("2026-07-28T00:00:01Z"));
+      setCreatedAt(follow2.getId(), Instant.parse("2026-07-28T00:00:02Z"));
+      setCreatedAt(third.getId(), Instant.parse("2026-07-28T00:00:03Z"));
       testEntityManager.flush();
       testEntityManager.clear();
 
-      // createdAt DESC: f3 → f2 → f1, 커서 = third
+      // createdAt DESC: f3(t3) → f2(t2) → f1(t1), 커서 = third(t3)
       FollowerListParams params = new FollowerListParams(
-          followee.getId(), third.getCreatedAt().toString(), third.getId(), 10, null);
+          followee.getId(), Instant.parse("2026-07-28T00:00:03Z").toString(),
+          third.getId(), 10, null);
 
       // when
       CursorPageResponse<Follow> result = followRepository.findFollowers(params);

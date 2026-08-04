@@ -1,15 +1,22 @@
 package com.sprint.mission.otboo.domain.social.feed.entity;
 
+import com.sprint.mission.otboo.domain.social.feed.dto.OotdSnapshot;
+import com.sprint.mission.otboo.domain.social.feed.dto.WeatherSnapshot;
+import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
+import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.SkyStatus;
 import com.sprint.mission.otboo.global.entity.SoftDeletable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -50,12 +57,14 @@ public class Feed {
   @Column(name = "weather_id")
   private UUID weatherId;
 
-  // TODO: 날씨 스냅샷 — 연결 이슈에서 채움 (String → enum)
+  // 날씨 스냅샷 — 등록 시점 값 복사
+  @Enumerated(EnumType.STRING)
   @Column(name = "sky_status")
-  private String skyStatus;
+  private SkyStatus skyStatus;
 
+  @Enumerated(EnumType.STRING)
   @Column(name = "precipitation_type")
-  private String precipitationType;
+  private PrecipitationType precipitationType;
 
   @Column(name = "precipitation_amount")
   private Double precipitationAmount;
@@ -69,10 +78,15 @@ public class Feed {
   @Column(name = "temperature_compared")
   private Double temperatureCompared;
 
-  // TODO: 착장 스냅샷 — 연결 이슈에서 채움 (String → List<OotdDto>)
+  @Column(name = "temperature_min")
+  private Double temperatureMin;
+
+  @Column(name = "temperature_max")
+  private Double temperatureMax;
+
   @JdbcTypeCode(SqlTypes.JSON)
   @Column(name = "ootds", columnDefinition = "jsonb")
-  private String ootds;
+  private List<OotdSnapshot> ootds;
 
   @Column(name = "content", columnDefinition = "text", nullable = false)
   private String content;
@@ -83,17 +97,28 @@ public class Feed {
   @Column(name = "comment_count", nullable = false)
   private int commentCount;
 
-  // TODO: 날씨·ootds 스냅샷은 연결 이슈에서 채움
-  private Feed(UUID authorId, UUID weatherId, String content) {
+  private Feed(UUID authorId, UUID weatherId, String content,
+      WeatherSnapshot weatherSnapshot, List<OotdSnapshot> ootdSnapshots) {
     this.authorId = authorId;
     this.weatherId = weatherId;
     this.content = content;
+    if (weatherSnapshot != null) {
+      this.skyStatus = weatherSnapshot.skyStatus();
+      this.precipitationType = weatherSnapshot.precipitationType();
+      this.precipitationAmount = weatherSnapshot.precipitationAmount();
+      this.precipitationProbability = weatherSnapshot.precipitationProbability();
+      this.temperatureCurrent = weatherSnapshot.temperatureCurrent();
+      this.temperatureCompared = weatherSnapshot.temperatureCompared();
+      this.temperatureMin = weatherSnapshot.temperatureMin();
+      this.temperatureMax = weatherSnapshot.temperatureMax();
+    }
+    this.ootds = ootdSnapshots == null ? List.of() : List.copyOf(ootdSnapshots);
     this.likeCount = 0;
     this.commentCount = 0;
   }
 
-  // TODO: 연결 이슈에서 날씨/ootds 파라미터 추가
-  public static Feed create(UUID authorId, UUID weatherId, String content) {
-    return new Feed(authorId, weatherId, content);
+  public static Feed create(UUID authorId, UUID weatherId, String content,
+      WeatherSnapshot weatherSnapshot, List<OotdSnapshot> ootdSnapshots) {
+    return new Feed(authorId, weatherId, content, weatherSnapshot, ootdSnapshots);
   }
 }

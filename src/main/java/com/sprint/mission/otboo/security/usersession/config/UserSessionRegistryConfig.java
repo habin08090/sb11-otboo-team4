@@ -11,7 +11,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 public class UserSessionRegistryConfig {
 
   @Bean
-  @ConditionalOnProperty(name = "auth.user-session.impl", havingValue = "redis", matchIfMissing = true)
+  @ConditionalOnProperty(name = "otboo.auth.user-session.impl", havingValue = "redis", matchIfMissing = true)
   public UserSessionRegistry userSessionRedisRegistry(StringRedisTemplate redisTemplate) {
     return new UserSessionRedisRegistry(redisTemplate);
   }

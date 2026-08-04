@@ -47,6 +47,10 @@ public class UserSummaryQueryRepositoryImpl implements UserSummaryQueryRepositor
   }
 
   public List<UserSummary> findByUserIds(Collection<UUID> userIds) {
+    if (userIds == null || userIds.isEmpty()) {
+      return List.of();
+    }
+    
     return queryFactory
         .select(Projections.constructor(UserSummary.class,
             user.id, user.name, profile.profileImageUrl))

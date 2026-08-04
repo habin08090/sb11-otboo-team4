@@ -13,7 +13,15 @@ public class InvalidCredentialsException extends AuthException {
     super(HttpStatus.UNAUTHORIZED, MESSAGE, details);
   }
 
+  private InvalidCredentialsException(Map<String, Object> details, Throwable cause) {
+    super(HttpStatus.UNAUTHORIZED, MESSAGE, details, cause);
+  }
+
   public static InvalidCredentialsException withNone() {
     return new InvalidCredentialsException(Collections.emptyMap());
+  }
+
+  public static InvalidCredentialsException withCause(Throwable cause) {
+    return new InvalidCredentialsException(Collections.emptyMap(), cause);
   }
 }

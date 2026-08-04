@@ -100,7 +100,8 @@ class FeedControllerTest {
           .sample();
 
       FeedDto response = new FeedDto(
-          UUID.randomUUID(), Instant.now(), Instant.now(), "오늘의 착장", 0L, 0, false);
+          UUID.randomUUID(), Instant.now(), Instant.now(), null, null, null,
+          "오늘의 착장", 0L, 0, false);
       when(feedService.create(any(FeedCreateRequest.class), eq(currentUserId)))
           .thenReturn(response);
 

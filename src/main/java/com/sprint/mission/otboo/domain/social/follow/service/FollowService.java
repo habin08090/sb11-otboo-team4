@@ -66,14 +66,12 @@ public class FollowService {
     }
     try {
       Follow saved = followRepository.save(Follow.create(followerId, followeeId));
-      log.info("팔로우 생성 완료: followId={}, followerId={}, followeeId={}",
-          saved.getId(), followerId, followeeId);
+      log.info("팔로우 생성 완료: followId={}", saved.getId());
       publishFollowNotification(followeeId, followerName);
       return saved;
     } catch (DataIntegrityViolationException e) {
       if (isUniqueViolation(e)) {
-        log.warn("팔로우 생성 중 동시성 충돌 발생 (재조회 진행): followerId={}, followeeId={}",
-            followerId, followeeId);
+        log.warn("팔로우 생성 중 동시성 충돌 발생 (재조회 진행)");
         return findExistingFollow(followerId, followeeId);
       }
       throw e; // UQ 외 제약 위반은 전파
@@ -117,8 +115,7 @@ public class FollowService {
     }
 
     followRepository.delete(follow);
-    log.info("팔로우 취소 완료: followId={}, followerId={}, followeeId={}",
-        followId, follow.getFollowerId(), follow.getFolloweeId());
+    log.info("팔로우 취소 완료: followId={}", followId);
   }
 
   private CursorPageResponse<FollowDto> toDtoPage(CursorPageResponse<Follow> page) {
