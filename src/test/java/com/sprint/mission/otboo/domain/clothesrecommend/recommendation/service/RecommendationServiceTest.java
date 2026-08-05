@@ -50,13 +50,10 @@ class RecommendationServiceTest {
   @Mock
   ClothesAttributeRepository clothesAttributeRepository;
 
-  // --- 헬퍼 메서드 ---
+
 
   private Weather createWeather(double temperature, PrecipitationType precipitationType,
       SkyStatus skyStatus, WindStrength windStrength) {
-    Weather weather = ReflectionTestUtils.invokeMethod(
-        Weather.class, "builder");
-    // Builder 접근이 안 되므로 ReflectionTestUtils로 필드 세팅
     Weather w = Weather.create(
         null, null, null,
         skyStatus, precipitationType, 0, 0,
@@ -82,7 +79,7 @@ class RecommendationServiceTest {
     return clothes;
   }
 
-  // --- 테스트 ---
+
 
   @Nested
   @DisplayName("추천 조회")
@@ -208,7 +205,7 @@ class RecommendationServiceTest {
     @Test
     @DisplayName("추위_민감도가_높으면_더_따뜻한_옷이_추천된다")
     void 추위_민감도가_높으면_더_따뜻한_옷이_추천된다() {
-      // given — 17°C + sensitivity 1(추위 민감) → 체감 14°C → 선선(아우터 포함)
+      // given
       UUID weatherId = UUID.randomUUID();
       UUID userId = UUID.randomUUID();
 
@@ -231,7 +228,7 @@ class RecommendationServiceTest {
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
 
-      // then — sensitivity 1이면 17°C에서도 아우터가 추천돼야 함
+      // then
       assertThat(result.clothes())
           .anyMatch(ootd -> ootd.type() == ClothesType.OUTER);
     }

@@ -53,15 +53,15 @@ public class RecommendationService {
   private final ClothesAttributeRepository clothesAttributeRepository;
 
   public RecommendationDto recommend(UUID weatherId, UUID userId) {
-    // 1. 날씨 조회
+    // 날씨 조회
     Weather weather = weatherRepository.findById(weatherId)
         .orElseThrow(() -> WeatherNotFoundException.withId(weatherId));
 
-    // 2. 프로필 조회
+    // 프로필 조회
     Profile profile = profileRepository.findByIdWithUser(userId)
         .orElseThrow(() -> ProfileNotFoundException.withId(userId));
 
-    // 3. 사용자 보유 의상 조회 (삭제 제외)
+    // 사용자 보유 의상 조회 (삭제 제외)
     List<Clothes> userClothes = clothesRepository
         .findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId);
 
@@ -69,25 +69,25 @@ public class RecommendationService {
       return new RecommendationDto(weatherId, userId, List.of());
     }
 
-    // 4. 체감온도 계산 (온도민감도 반영)
+    // 체감온도 계산 (온도민감도 반영)
     double adjustedTemp = adjustTemperature(
         weather.getTemperatureCurrent(), profile.getTemperatureSensitivity());
 
-    // 5. 기온대별 추천 타입 결정
+    // 기온대별 추천 타입 결정
     Set<ClothesType> recommendedTypes = getRecommendedTypes(adjustedTemp);
 
-    // 6. 강수·바람 보정
+    // 강수·바람 보정
     applyPrecipitationAdjustment(recommendedTypes, weather.getPrecipitationType());
     applyWindAdjustment(recommendedTypes, weather.getWindAsWord());
 
-    // 7. 타입별 1개씩 선택
+    // 타입별 1개씩 선택
     List<Clothes> selectedClothes = selectClothesByType(userClothes, recommendedTypes);
 
     if (selectedClothes.isEmpty()) {
       return new RecommendationDto(weatherId, userId, List.of());
     }
 
-    // 8. OotdDto 변환
+    // OotdDto 변환
     List<OotdDto> ootdList = toOotdDtoList(selectedClothes);
 
     log.info("추천 완료 userId={}, weatherId={}, 추천 의상 수={}",
@@ -96,14 +96,14 @@ public class RecommendationService {
     return new RecommendationDto(weatherId, userId, ootdList);
   }
 
-  // --- 체감온도 계산 ---
+  // 체감온도 계산
 
   double adjustTemperature(double currentTemp, int sensitivity) {
     double adjustment = (sensitivity - SENSITIVITY_CENTER) * SENSITIVITY_ADJUSTMENT_UNIT;
-    return currentTemp - adjustment;
+    return currentTemp + adjustment;
   }
 
-  // --- 기온대별 추천 타입 ---
+  //기온대별 추천 타입
 
   Set<ClothesType> getRecommendedTypes(double adjustedTemp) {
     Set<ClothesType> types = EnumSet.noneOf(ClothesType.class);
@@ -147,7 +147,7 @@ public class RecommendationService {
     return types;
   }
 
-  // --- 강수 보정 ---
+  //강수 보정
 
   void applyPrecipitationAdjustment(Set<ClothesType> types,
       PrecipitationType precipitationType) {
@@ -165,7 +165,7 @@ public class RecommendationService {
     }
   }
 
-  // --- 바람 보정 ---
+  //바람 보정
 
   void applyWindAdjustment(Set<ClothesType> types, WindStrength windStrength) {
     if (windStrength == WindStrength.STRONG) {
@@ -173,7 +173,7 @@ public class RecommendationService {
     }
   }
 
-  // --- 타입별 1개씩 선택 ---
+  //타입별 1개씩 선택
 
   List<Clothes> selectClothesByType(List<Clothes> userClothes,
       Set<ClothesType> recommendedTypes) {
@@ -189,7 +189,7 @@ public class RecommendationService {
     return selected;
   }
 
-  // --- OotdDto 변환 ---
+  //OotdDto 변환
 
   private List<OotdDto> toOotdDtoList(List<Clothes> selectedClothes) {
     List<UUID> clothesIds = selectedClothes.stream()
