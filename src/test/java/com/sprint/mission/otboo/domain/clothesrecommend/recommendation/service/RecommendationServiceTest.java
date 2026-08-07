@@ -232,5 +232,199 @@ class RecommendationServiceTest {
       assertThat(result.clothes())
           .anyMatch(ootd -> ootd.type() == ClothesType.OUTER);
     }
+    @Test
+    @DisplayName("기온대_경계값_4도에서_매우추움으로_분류된다")
+    void 기온대_경계값_4도에서_매우추움으로_분류된다() {
+      // given
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(4.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes outer = createClothes(userId, "패딩", ClothesType.OUTER);
+      Clothes top = createClothes(userId, "기모 맨투맨", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "기모 바지", ClothesType.BOTTOM);
+      Clothes scarf = createClothes(userId, "목도리", ClothesType.SCARF);
+      Clothes socks = createClothes(userId, "두꺼운 양말", ClothesType.SOCKS);
+      Clothes shoes = createClothes(userId, "부츠", ClothesType.SHOES);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+          .willReturn(List.of(outer, top, bottom, scarf, socks, shoes));
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(any()))
+          .willReturn(List.of());
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then — 매우추움: OUTER, TOP, BOTTOM, SCARF, SOCKS, SHOES 모두 포함
+      assertThat(result.clothes()).hasSize(6);
+      assertThat(result.clothes())
+          .anyMatch(ootd -> ootd.type() == ClothesType.SCARF);
+    }
+
+    @Test
+    @DisplayName("기온대_경계값_5도에서_추움으로_분류되어_스카프가_빠진다")
+    void 기온대_경계값_5도에서_추움으로_분류되어_스카프가_빠진다() {
+      // given
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(5.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes outer = createClothes(userId, "코트", ClothesType.OUTER);
+      Clothes top = createClothes(userId, "니트", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "청바지", ClothesType.BOTTOM);
+      Clothes scarf = createClothes(userId, "목도리", ClothesType.SCARF);
+      Clothes socks = createClothes(userId, "양말", ClothesType.SOCKS);
+      Clothes shoes = createClothes(userId, "부츠", ClothesType.SHOES);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+          .willReturn(List.of(outer, top, bottom, scarf, socks, shoes));
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(any()))
+          .willReturn(List.of());
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then — 추움: SCARF 없이 OUTER, TOP, BOTTOM, SOCKS, SHOES
+      assertThat(result.clothes()).hasSize(5);
+      assertThat(result.clothes())
+          .noneMatch(ootd -> ootd.type() == ClothesType.SCARF);
+    }
+
+    @Test
+    @DisplayName("매우_더울_때_모자가_추천에_포함된다")
+    void 매우_더울_때_모자가_추천에_포함된다() {
+      // given
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(33.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes top = createClothes(userId, "민소매", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
+      Clothes shoes = createClothes(userId, "샌들", ClothesType.SHOES);
+      Clothes hat = createClothes(userId, "모자", ClothesType.HAT);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+          .willReturn(List.of(top, bottom, shoes, hat));
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(any()))
+          .willReturn(List.of());
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then
+      assertThat(result.clothes())
+          .anyMatch(ootd -> ootd.type() == ClothesType.HAT);
+    }
+
+    @Test
+    @DisplayName("눈이_오면_스카프와_양말이_추천에_포함된다")
+    void 눈이_오면_스카프와_양말이_추천에_포함된다() {
+      // given
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(20.0, PrecipitationType.SNOW,
+          SkyStatus.CLOUDY, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes top = createClothes(userId, "맨투맨", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "청바지", ClothesType.BOTTOM);
+      Clothes shoes = createClothes(userId, "운동화", ClothesType.SHOES);
+      Clothes outer = createClothes(userId, "패딩", ClothesType.OUTER);
+      Clothes scarf = createClothes(userId, "목도리", ClothesType.SCARF);
+      Clothes socks = createClothes(userId, "양말", ClothesType.SOCKS);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+          .willReturn(List.of(top, bottom, shoes, outer, scarf, socks));
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(any()))
+          .willReturn(List.of());
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then
+      assertThat(result.clothes())
+          .anyMatch(ootd -> ootd.type() == ClothesType.SCARF);
+      assertThat(result.clothes())
+          .anyMatch(ootd -> ootd.type() == ClothesType.SOCKS);
+    }
+
+    @Test
+    @DisplayName("강풍이면_아우터가_추천에_포함된다")
+    void 강풍이면_아우터가_추천에_포함된다() {
+      // given — 25°C인데 STRONG 바람 → 아우터 추가
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(25.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.STRONG);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes top = createClothes(userId, "반팔", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
+      Clothes shoes = createClothes(userId, "운동화", ClothesType.SHOES);
+      Clothes outer = createClothes(userId, "바람막이", ClothesType.OUTER);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+          .willReturn(List.of(top, bottom, shoes, outer));
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(any()))
+          .willReturn(List.of());
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then
+      assertThat(result.clothes())
+          .anyMatch(ootd -> ootd.type() == ClothesType.OUTER);
+    }
+
+    @Test
+    @DisplayName("필요한_타입의_옷이_없으면_해당_타입은_건너뛴다")
+    void 필요한_타입의_옷이_없으면_해당_타입은_건너뛴다() {
+      // given — 추움(OUTER 필요)인데 아우터가 없음
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(7.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes top = createClothes(userId, "니트", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "청바지", ClothesType.BOTTOM);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+          .willReturn(List.of(top, bottom));
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(any()))
+          .willReturn(List.of());
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then — 아우터/양말/신발 없어도 에러 안 나고, 있는 것만 반환
+      assertThat(result.clothes()).hasSize(2);
+      assertThat(result.clothes())
+          .noneMatch(ootd -> ootd.type() == ClothesType.OUTER);
+    }
   }
 }
