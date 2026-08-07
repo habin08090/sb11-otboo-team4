@@ -106,42 +106,16 @@ public class RecommendationService {
   //기온대별 추천 타입
 
   Set<ClothesType> getRecommendedTypes(double adjustedTemp) {
-    Set<ClothesType> types = EnumSet.noneOf(ClothesType.class);
+    Set<ClothesType> types = EnumSet.of(ClothesType.TOP, ClothesType.BOTTOM, ClothesType.SHOES);
 
     if (adjustedTemp <= VERY_COLD_MAX) {
-      // 매우 추움 (~4°C)
-      types.addAll(EnumSet.of(
-          ClothesType.OUTER, ClothesType.TOP, ClothesType.BOTTOM,
-          ClothesType.SCARF, ClothesType.SOCKS, ClothesType.SHOES));
+      types.addAll(EnumSet.of(ClothesType.OUTER, ClothesType.SCARF, ClothesType.SOCKS));
     } else if (adjustedTemp <= COLD_MAX) {
-      // 추움 (5~8°C)
-      types.addAll(EnumSet.of(
-          ClothesType.OUTER, ClothesType.TOP, ClothesType.BOTTOM,
-          ClothesType.SOCKS, ClothesType.SHOES));
-    } else if (adjustedTemp <= CHILLY_MAX) {
-      // 쌀쌀 (9~11°C)
-      types.addAll(EnumSet.of(
-          ClothesType.OUTER, ClothesType.TOP, ClothesType.BOTTOM, ClothesType.SHOES));
+      types.addAll(EnumSet.of(ClothesType.OUTER, ClothesType.SOCKS));
     } else if (adjustedTemp <= COOL_MAX) {
-      // 선선 (12~16°C)
-      types.addAll(EnumSet.of(
-          ClothesType.OUTER, ClothesType.TOP, ClothesType.BOTTOM, ClothesType.SHOES));
-    } else if (adjustedTemp <= MILD_MAX) {
-      // 적당 (17~19°C)
-      types.addAll(EnumSet.of(
-          ClothesType.TOP, ClothesType.BOTTOM, ClothesType.SHOES));
-    } else if (adjustedTemp <= WARM_MAX) {
-      // 따뜻 (20~22°C)
-      types.addAll(EnumSet.of(
-          ClothesType.TOP, ClothesType.BOTTOM, ClothesType.SHOES));
-    } else if (adjustedTemp <= HOT_MAX) {
-      // 더움 (23~27°C)
-      types.addAll(EnumSet.of(
-          ClothesType.TOP, ClothesType.BOTTOM, ClothesType.SHOES));
-    } else {
-      // 매우 더움 (28°C~)
-      types.addAll(EnumSet.of(
-          ClothesType.TOP, ClothesType.BOTTOM, ClothesType.SHOES, ClothesType.HAT));
+      types.add(ClothesType.OUTER);
+    } else if (adjustedTemp > HOT_MAX) {
+      types.add(ClothesType.HAT);
     }
 
     return types;
