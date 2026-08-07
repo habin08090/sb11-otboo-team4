@@ -83,7 +83,7 @@ class RecommendationServiceTest {
 
   @Nested
   @DisplayName("추천 조회")
-  class 추천_조회 {
+  class Recommend {
 
     @Test
     @DisplayName("날씨_프로필_의상이_모두_있으면_추천_결과를_반환한다")
