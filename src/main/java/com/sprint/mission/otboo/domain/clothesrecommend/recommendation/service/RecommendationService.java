@@ -93,8 +93,11 @@ public class RecommendationService {
       types.addAll(EnumSet.of(ClothesType.OUTER, ClothesType.SOCKS));
     } else if (adjustedTemp <= COOL_MAX) {
       types.add(ClothesType.OUTER);
-    } else if (adjustedTemp > HOT_MAX) {
-      types.add(ClothesType.HAT);
+    } else {
+      types.add(ClothesType.DRESS);
+      if (adjustedTemp > HOT_MAX) {
+        types.add(ClothesType.HAT);
+      }
     }
 
     return types;

@@ -21,6 +21,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+
 @WebMvcTest(RecommendationController.class)
 class RecommendationControllerTest {
 
@@ -40,11 +41,10 @@ class RecommendationControllerTest {
     void 유효한_weatherId로_조회하면_200과_추천_결과를_반환한다() throws Exception {
       // given
       UUID weatherId = UUID.randomUUID();
-      UUID userId = UUID.randomUUID();
       UUID clothesId = UUID.randomUUID();
 
       OotdDto ootd = new OotdDto(clothesId, "반팔 티셔츠", null, ClothesType.TOP, List.of());
-      RecommendationDto dto = new RecommendationDto(weatherId, userId, List.of(ootd));
+      RecommendationDto dto = new RecommendationDto(weatherId, UUID.randomUUID(), List.of(ootd));
 
       given(recommendationService.recommend(any(), any())).willReturn(dto);
 
