@@ -27,6 +27,11 @@ public interface RecommendationApi {
           responseCode = "400",
           description = "추천 조회 실패",
           content = @Content(
+              schema = @Schema(implementation = ErrorResponse.class))),
+      @ApiResponse(
+          responseCode = "404",
+          description = "날씨 또는 프로필 정보를 찾을 수 없음",
+          content = @Content(
               schema = @Schema(implementation = ErrorResponse.class)))
   })
   ResponseEntity<RecommendationDto> getRecommendation(

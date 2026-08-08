@@ -27,6 +27,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Comparator;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDefValue;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefValueRepository;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -37,10 +40,7 @@ public class RecommendationService {
   // 기온대 경계값 (°C)
   private static final double VERY_COLD_MAX = 4.0;
   private static final double COLD_MAX = 8.0;
-  private static final double CHILLY_MAX = 11.0;
   private static final double COOL_MAX = 16.0;
-  private static final double MILD_MAX = 19.0;
-  private static final double WARM_MAX = 22.0;
   private static final double HOT_MAX = 27.0;
 
   // 민감도 보정 단위 (sensitivity 1단위당 1.5°C)
@@ -51,6 +51,7 @@ public class RecommendationService {
   private final ProfileRepository profileRepository;
   private final ClothesRepository clothesRepository;
   private final ClothesAttributeRepository clothesAttributeRepository;
+  private final ClothesAttributeDefValueRepository clothesAttributeDefValueRepository;
 
   public RecommendationDto recommend(UUID weatherId, UUID userId) {
     // 날씨 조회
@@ -59,7 +60,7 @@ public class RecommendationService {
 
     // 프로필 조회
     Profile profile = profileRepository.findByIdWithUser(userId)
-        .orElseThrow(() -> ProfileNotFoundException.withId(userId));
+        .orElseThrow(ProfileNotFoundException::withNone);
 
     // 사용자 보유 의상 조회 (삭제 제외)
     List<Clothes> userClothes = clothesRepository
@@ -90,8 +91,7 @@ public class RecommendationService {
     // OotdDto 변환
     List<OotdDto> ootdList = toOotdDtoList(selectedClothes);
 
-    log.info("추천 완료 userId={}, weatherId={}, 추천 의상 수={}",
-        userId, weatherId, ootdList.size());
+    log.info("추천 완료 weatherId={}, 추천 의상 수={}", weatherId, ootdList.size());
 
     return new RecommendationDto(weatherId, userId, ootdList);
   }
@@ -176,17 +176,35 @@ public class RecommendationService {
     Map<UUID, List<ClothesAttribute>> attributesByClothesId = allAttributes.stream()
         .collect(Collectors.groupingBy(ClothesAttribute::getClothesId));
 
+    // selectableValues 로딩
+    List<UUID> definitionIds = allAttributes.stream()
+        .map(attr -> attr.getDefinition().getId())
+        .distinct()
+        .toList();
+    Map<UUID, List<ClothesAttributeDefValue>> defValuesByDefId = definitionIds.isEmpty()
+        ? Map.of()
+        : clothesAttributeDefValueRepository.findAllByDefinitionIds(definitionIds).stream()
+            .collect(Collectors.groupingBy(v -> v.getDefinition().getId()));
+
     return selectedClothes.stream()
         .map(clothes -> {
           List<ClothesAttribute> attrs = attributesByClothesId
               .getOrDefault(clothes.getId(), List.of());
 
           List<ClothesAttributeWithDefDto> attrDtos = attrs.stream()
-              .map(attr -> new ClothesAttributeWithDefDto(
-                  attr.getDefinition().getId(),
-                  attr.getDefinition().getName(),
-                  List.of(),
-                  attr.getValue()))
+              .map(attr -> {
+                List<String> selectableValues = defValuesByDefId
+                    .getOrDefault(attr.getDefinition().getId(), List.of())
+                    .stream()
+                    .map(ClothesAttributeDefValue::getValue)
+                    .toList();
+
+                return new ClothesAttributeWithDefDto(
+                    attr.getDefinition().getId(),
+                    attr.getDefinition().getName(),
+                    selectableValues,
+                    attr.getValue());
+              })
               .toList();
 
           return new OotdDto(
