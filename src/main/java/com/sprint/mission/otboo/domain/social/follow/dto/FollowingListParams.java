@@ -1,5 +1,6 @@
 package com.sprint.mission.otboo.domain.social.follow.dto;
 
+import com.sprint.mission.otboo.domain.social.common.dto.CursorListParams;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;

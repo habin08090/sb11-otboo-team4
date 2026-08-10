@@ -30,7 +30,7 @@ class WeatherFetchJobConfigTest {
 
     @Test
     @DisplayName("Job_Step_생성_성공")
-    void Job_Step_생성_성공() throws Exception {
+    void Job_Step_생성_성공() {
       // given
       WeatherFetchJobListener jobListener = mock(WeatherFetchJobListener.class);
       WeatherFetchStepListener stepListener = mock(WeatherFetchStepListener.class);
@@ -47,20 +47,14 @@ class WeatherFetchJobConfigTest {
           skipLoggingListener,
           reader,
           processor,
-          writer
+          writer,
+          new WeatherFetchProperties(50, 10, 3)
       );
-
-      var chunkSizeField = WeatherFetchJobConfig.class.getDeclaredField("chunkSize");
-      chunkSizeField.setAccessible(true);
-      chunkSizeField.set(config, 50);
-
-      var skipLimitField = WeatherFetchJobConfig.class.getDeclaredField("skipLimit");
-      skipLimitField.setAccessible(true);
-      skipLimitField.set(config, 10);
 
       // when
       Job job = config.weatherFetchJob();
       Step step = config.weatherFetchStep();
+      Step retryStep = config.weatherFetchRetryStep();
 
       // then
       assertNotNull(job);
@@ -68,6 +62,9 @@ class WeatherFetchJobConfigTest {
 
       assertNotNull(step);
       assertThat(step.getName()).isEqualTo("weatherFetchStep");
+
+      assertNotNull(retryStep);
+      assertThat(retryStep.getName()).isEqualTo("weatherFetchRetryStep");
     }
   }
 }
