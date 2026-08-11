@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sprint.mission.otboo.domain.social.follow.entity.Follow;
 import com.sprint.mission.otboo.global.config.JpaConfig;
 import com.sprint.mission.otboo.global.config.QuerydslConfig;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -165,6 +166,41 @@ class FollowRepositoryTest {
 
       // then
       assertThat(count).isEqualTo(2);
+    }
+  }
+
+  @Nested
+  @DisplayName("findFollowerIds")
+  class FindFollowerIds {
+
+    @Test
+    @DisplayName("특정 사용자를 팔로우하는 사용자들의 id를 반환한다")
+    void 특정_사용자를_팔로우하는_사용자들의_id를_반환한다() {
+      // given
+      UUID followeeId = UUID.randomUUID();
+      UUID follower1 = UUID.randomUUID();
+      UUID follower2 = UUID.randomUUID();
+      followRepository.save(Follow.create(follower1, followeeId));
+      followRepository.save(Follow.create(follower2, followeeId));
+      followRepository.save(Follow.create(UUID.randomUUID(), UUID.randomUUID()));  // 다른 관계
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      List<UUID> result = followRepository.findFollowerIds(followeeId);
+
+      // then
+      assertThat(result).containsExactlyInAnyOrder(follower1, follower2);
+    }
+
+    @Test
+    @DisplayName("팔로워가 없으면 빈 목록을 반환한다")
+    void 팔로워가_없으면_빈_목록을_반환한다() {
+      // when
+      List<UUID> result = followRepository.findFollowerIds(UUID.randomUUID());
+
+      // then
+      assertThat(result).isEmpty();
     }
   }
 }

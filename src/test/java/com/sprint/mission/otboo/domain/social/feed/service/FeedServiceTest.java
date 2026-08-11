@@ -34,6 +34,7 @@ import com.sprint.mission.otboo.domain.social.feed.exception.WeatherNotFoundExce
 import com.sprint.mission.otboo.domain.social.feed.mapper.FeedMapper;
 import com.sprint.mission.otboo.domain.social.feed.repository.FeedLikeRepository;
 import com.sprint.mission.otboo.domain.social.feed.repository.FeedRepository;
+import com.sprint.mission.otboo.domain.social.follow.repository.FollowRepository;
 import com.sprint.mission.otboo.domain.weathernotification.weather.dto.PrecipitationDto;
 import com.sprint.mission.otboo.domain.weathernotification.weather.dto.TemperatureDto;
 import com.sprint.mission.otboo.domain.weathernotification.weather.dto.WeatherSummaryDto;
@@ -95,6 +96,9 @@ class FeedServiceTest {
 
   @Mock
   ApplicationEventPublisher eventPublisher;
+
+  @Mock
+  FollowRepository followRepository;
 
   private static void setFeedId(Feed feed, UUID id) {
     try {
@@ -351,6 +355,62 @@ class FeedServiceTest {
       // then
       assertThat(result.ootds()).hasSize(1);
       assertThat(result.ootds().get(0).name()).isEqualTo("패딩");
+    }
+
+    @Test
+    @DisplayName("피드를 등록하면 작성자의 팔로워들에게 알림 이벤트를 발행한다")
+    void 피드를_등록하면_작성자의_팔로워들에게_알림_이벤트를_발행한다() {
+      // given
+      UUID currentUserId = UUID.randomUUID();
+      UUID follower1 = UUID.randomUUID();
+      UUID follower2 = UUID.randomUUID();
+      FeedCreateRequest request = fm.giveMeBuilder(FeedCreateRequest.class)
+          .set("authorId", currentUserId)
+          .set("content", "오늘의 착장")
+          .sample();
+
+      UserSummary author = new UserSummary(currentUserId, "테스터", null);
+
+      when(weatherSnapshotProvider.readSnapshot(any())).thenReturn(DUMMY_SNAPSHOT);
+      when(userSummaryQueryRepository.findByUserId(currentUserId)).thenReturn(author);
+      when(feedRepository.save(any(Feed.class))).thenAnswer(inv -> inv.getArgument(0));
+      when(followRepository.findFollowerIds(currentUserId))
+          .thenReturn(List.of(follower1, follower2));
+
+      // when
+      feedService.create(request, currentUserId);
+
+      // then
+      ArgumentCaptor<NotificationRequestedEvent> captor =
+          ArgumentCaptor.forClass(NotificationRequestedEvent.class);
+      verify(eventPublisher).publishEvent(captor.capture());
+      NotificationRequestedEvent event = captor.getValue();
+      assertThat(event.receiverIds()).containsExactlyInAnyOrder(follower1, follower2);
+      assertThat(event.title()).isEqualTo("테스터님이 새로운 피드를 작성했어요.");
+      assertThat(event.content()).isEqualTo("오늘의 착장");
+    }
+
+    @Test
+    @DisplayName("팔로워가 없으면 알림 이벤트를 발행하지 않는다")
+    void 팔로워가_없으면_알림_이벤트를_발행하지_않는다() {
+      // given
+      UUID currentUserId = UUID.randomUUID();
+      FeedCreateRequest request = fm.giveMeBuilder(FeedCreateRequest.class)
+          .set("authorId", currentUserId)
+          .sample();
+
+      UserSummary author = new UserSummary(currentUserId, "테스터", null);
+
+      when(weatherSnapshotProvider.readSnapshot(any())).thenReturn(DUMMY_SNAPSHOT);
+      when(userSummaryQueryRepository.findByUserId(currentUserId)).thenReturn(author);
+      when(feedRepository.save(any(Feed.class))).thenAnswer(inv -> inv.getArgument(0));
+      when(followRepository.findFollowerIds(currentUserId)).thenReturn(List.of());
+
+      // when
+      feedService.create(request, currentUserId);
+
+      // then
+      verify(eventPublisher, never()).publishEvent(any());
     }
   }
 

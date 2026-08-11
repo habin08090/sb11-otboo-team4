@@ -15,6 +15,7 @@ import com.sprint.mission.otboo.domain.social.feed.exception.FeedNotFoundExcepti
 import com.sprint.mission.otboo.domain.social.feed.mapper.FeedMapper;
 import com.sprint.mission.otboo.domain.social.feed.repository.FeedLikeRepository;
 import com.sprint.mission.otboo.domain.social.feed.repository.FeedRepository;
+import com.sprint.mission.otboo.domain.social.follow.repository.FollowRepository;
 import com.sprint.mission.otboo.global.dto.CursorPageResponse;
 import com.sprint.mission.otboo.global.event.NotificationLevel;
 import com.sprint.mission.otboo.global.event.NotificationRequestedEvent;
@@ -48,94 +49,43 @@ public class FeedService {
   private final OotdSnapshotProvider ootdSnapshotProvider;
   private final FeedLikeRepository feedLikeRepository;
   private final ApplicationEventPublisher eventPublisher;
+  private final FollowRepository followRepository;
 
   @Transactional
   public FeedDto create(FeedCreateRequest request, UUID currentUserId) {
-    if (!request.authorId().equals(currentUserId)) {
-      throw FeedForbiddenException.authorMismatch(currentUserId, request.authorId());
-    }
+    validateAuthorMatchesCurrentUser(request.authorId(), currentUserId);
 
-    WeatherSnapshot weatherSnapshot = weatherSnapshotProvider.readSnapshot(request.weatherId());
-    List<OotdSnapshot> ootdSnapshots = ootdSnapshotProvider.readOotds(request.clothesIds(),
-        request.authorId());
-
-    Feed feed = feedRepository.save(
-        Feed.create(request.authorId(), request.weatherId(), request.content(), weatherSnapshot,
-            ootdSnapshots));
+    Feed feed = feedRepository.save(createFeedWithSnapshots(request));
     log.info("피드 등록 완료: feedId={}", feed.getId());
 
     UserSummary author = userSummaryQueryRepository.findByUserId(feed.getAuthorId());
+    publishFeedCreatedNotification(feed.getAuthorId(), author.name(), feed.getContent());
+
     return feedMapper.toDto(feed, author, false);
   }
 
   public CursorPageResponse<FeedDto> getFeeds(FeedListParams params, UUID currentUserId) {
-    CursorPageResponse<Feed> page = feedRepository.findFeeds(params);
-
-    List<Feed> feeds = page.data();
-
-    List<UUID> authorIds = feeds.stream()
-        .map(Feed::getAuthorId)
-        .distinct()
-        .toList();
-
-    Map<UUID, UserSummary> authorMap = userSummaryQueryRepository.findByUserIds(authorIds).stream()
-        .collect(Collectors.toMap(UserSummary::userId, Function.identity(),
-            (existing, replacement) -> existing));
-
-    List<UUID> feedIds = feeds.stream()
-        .map(Feed::getId)
-        .toList();
-
-    Set<UUID> likedFeedIds = feedIds.isEmpty()
-        ? Set.of()
-        : new HashSet<>(feedLikeRepository.findLikedFeedIds(currentUserId, feedIds));
-
-    List<FeedDto> data = feeds.stream()
-        .map(feed -> {
-          UserSummary author = authorMap.get(feed.getAuthorId());
-          boolean likedByMe = likedFeedIds.contains(feed.getId());
-          return feedMapper.toDto(feed, author, likedByMe);
-        })
-        .toList();
-
-    return new CursorPageResponse<>(
-        data, page.nextCursor(), page.nextIdAfter(), page.hasNext(),
-        page.totalCount(), page.sortBy(), page.sortDirection());
+    return toDtoPage(feedRepository.findFeeds(params), currentUserId);
   }
 
   @Transactional
   public void like(UUID feedId, UUID currentUserId) {
-    if (!feedRepository.existsByIdAndSoftDeletable_DeletedAtIsNull(feedId)) {
-      throw FeedNotFoundException.withId(feedId);
-    }
+    validateFeedExists(feedId);
     if (feedLikeRepository.existsByFeedIdAndUserId(feedId, currentUserId)) {
       return;
     }
-    try {
-      feedLikeRepository.save(FeedLike.create(feedId, currentUserId));
-    } catch (DataIntegrityViolationException e) {
-      if (isUniqueViolation(e)) {
-        log.warn("피드 좋아요 중 동시성 충돌 발생: feedId={}", feedId);
-        return;
-      }
-      throw e;
+    if (!saveFeedLike(feedId, currentUserId)) {
+      return;
     }
     feedRepository.incrementLikeCount(feedId);
     log.info("피드 좋아요 완료: feedId={}", feedId);
 
-    UUID authorId = feedRepository.findAuthorId(feedId)
-        .orElseThrow(() -> FeedNotFoundException.withId(feedId));
-    UserSummary liker = userSummaryQueryRepository.findByUserId(currentUserId);
-    eventPublisher.publishEvent(new NotificationRequestedEvent(
-        Set.of(authorId), "좋아요",
-        liker.name() + "님이 내 피드를 좋아합니다.", NotificationLevel.INFO));
+    publishFeedLikedNotification(feedId, currentUserId);
   }
 
   @Transactional
   public void unlike(UUID feedId, UUID currentUserId) {
-    if (!feedRepository.existsByIdAndSoftDeletable_DeletedAtIsNull(feedId)) {
-      throw FeedNotFoundException.withId(feedId);
-    }
+    validateFeedExists(feedId);
     if (feedLikeRepository.deleteByFeedIdAndUserId(feedId, currentUserId) > 0) {
       feedRepository.decrementLikeCount(feedId);
       log.info("피드 좋아요 취소 완료: feedId={}", feedId);
@@ -174,6 +124,89 @@ public class FeedService {
     if (!feed.getAuthorId().equals(currentUserId)) {
       throw FeedForbiddenException.authorMismatch(currentUserId, feed.getAuthorId());
     }
+  }
+
+  private Feed createFeedWithSnapshots(FeedCreateRequest request) {
+    WeatherSnapshot weatherSnapshot = weatherSnapshotProvider.readSnapshot(request.weatherId());
+    List<OotdSnapshot> ootdSnapshots =
+        ootdSnapshotProvider.readOotds(request.clothesIds(), request.authorId());
+    return Feed.create(request.authorId(), request.weatherId(), request.content(),
+        weatherSnapshot, ootdSnapshots);
+  }
+
+  private CursorPageResponse<FeedDto> toDtoPage(CursorPageResponse<Feed> page, UUID currentUserId) {
+    List<Feed> feeds = page.data();
+
+    Map<UUID, UserSummary> authorMap = feeds.isEmpty() ? Map.of() :
+        userSummaryQueryRepository.findByUserIds(
+                feeds.stream().map(Feed::getAuthorId).distinct().toList()
+            ).stream()
+            .collect(Collectors.toMap(UserSummary::userId, Function.identity(),
+                (existing, replacement) -> existing));
+
+    Set<UUID> likedFeedIds = findLikedFeedIds(feeds, currentUserId);
+
+    List<FeedDto> data = feeds.stream()
+        .map(feed -> feedMapper.toDto(feed,
+            authorMap.get(feed.getAuthorId()),
+            likedFeedIds.contains(feed.getId())))
+        .toList();
+
+    return new CursorPageResponse<>(data, page.nextCursor(), page.nextIdAfter(),
+        page.hasNext(), page.totalCount(), page.sortBy(), page.sortDirection());
+  }
+
+  private Set<UUID> findLikedFeedIds(List<Feed> feeds, UUID currentUserId) {
+    if (feeds.isEmpty()) {
+      return Set.of();
+    }
+    List<UUID> feedIds = feeds.stream().map(Feed::getId).toList();
+    return new HashSet<>(feedLikeRepository.findLikedFeedIds(currentUserId, feedIds));
+  }
+
+  // 저장 성공 시 true, 동시성 충돌로 이미 존재하면 false
+  private boolean saveFeedLike(UUID feedId, UUID currentUserId) {
+    try {
+      feedLikeRepository.save(FeedLike.create(feedId, currentUserId));
+      return true;
+    } catch (DataIntegrityViolationException e) {
+      if (isUniqueViolation(e)) {
+        log.warn("피드 좋아요 중 동시성 충돌 발생: feedId={}", feedId);
+        return false;
+      }
+      throw e;
+    }
+  }
+
+  private void validateFeedExists(UUID feedId) {
+    if (!feedRepository.existsByIdAndSoftDeletable_DeletedAtIsNull(feedId)) {
+      throw FeedNotFoundException.withId(feedId);
+    }
+  }
+
+  private void validateAuthorMatchesCurrentUser(UUID authorId, UUID currentUserId) {
+    if (!authorId.equals(currentUserId)) {
+      throw FeedForbiddenException.authorMismatch(currentUserId, authorId);
+    }
+  }
+
+  private void publishFeedCreatedNotification(UUID authorId, String authorName, String content) {
+    List<UUID> followerIds = followRepository.findFollowerIds(authorId);
+    if (followerIds.isEmpty()) {
+      return;
+    }
+    eventPublisher.publishEvent(new NotificationRequestedEvent(
+        Set.copyOf(followerIds), authorName + "님이 새로운 피드를 작성했어요.",
+        content, NotificationLevel.INFO));
+  }
+
+  private void publishFeedLikedNotification(UUID feedId, UUID likerId) {
+    UUID authorId = feedRepository.findAuthorId(feedId)
+        .orElseThrow(() -> FeedNotFoundException.withId(feedId));
+    UserSummary liker = userSummaryQueryRepository.findByUserId(likerId);
+    eventPublisher.publishEvent(new NotificationRequestedEvent(
+        Set.of(authorId), "좋아요",
+        liker.name() + "님이 내 피드를 좋아합니다.", NotificationLevel.INFO));
   }
 
   private boolean isUniqueViolation(DataIntegrityViolationException e) {

@@ -1,33 +1,48 @@
 package com.sprint.mission.otboo.domain.social.directmessage.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.navercorp.fixturemonkey.FixtureMonkey;
+import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
+import com.navercorp.fixturemonkey.jakarta.validation.plugin.JakartaValidationPlugin;
 import com.sprint.mission.otboo.domain.social.common.dto.UserSummary;
 import com.sprint.mission.otboo.domain.social.common.repository.querydsl.UserSummaryQueryRepository;
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageDto;
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageParams;
+import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageSendRequest;
 import com.sprint.mission.otboo.domain.social.directmessage.entity.DirectMessage;
+import com.sprint.mission.otboo.domain.social.directmessage.exception.DirectMessageForbiddenException;
+import com.sprint.mission.otboo.domain.social.directmessage.exception.SelfDirectMessageNotAllowedException;
 import com.sprint.mission.otboo.domain.social.directmessage.mapper.DirectMessageMapper;
 import com.sprint.mission.otboo.domain.social.directmessage.repository.DirectMessageRepository;
 import com.sprint.mission.otboo.global.dto.CursorPageResponse;
 import com.sprint.mission.otboo.global.dto.SortDirection;
+import com.sprint.mission.otboo.global.event.NotificationRequestedEvent;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("DirectMessageService")
 class DirectMessageServiceTest {
+
+  static final FixtureMonkey fm = FixtureMonkey.builder()
+      .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
+      .plugin(new JakartaValidationPlugin())
+      .build();
 
   @InjectMocks
   DirectMessageService directMessageService;
@@ -40,6 +55,9 @@ class DirectMessageServiceTest {
 
   @Mock
   UserSummaryQueryRepository userSummaryQueryRepository;
+
+  @Mock
+  ApplicationEventPublisher eventPublisher;
 
   @Nested
   @DisplayName("DM 목록 조회")
@@ -97,6 +115,113 @@ class DirectMessageServiceTest {
       assertThat(result.data()).isEmpty();
       assertThat(result.totalCount()).isZero();
       verify(userSummaryQueryRepository, never()).findByUserIds(any());
+    }
+  }
+
+  @Nested
+  @DisplayName("DM 전송")
+  class Send {
+
+    @Test
+    @DisplayName("메시지를 저장하고 DirectMessageDto를 반환한다")
+    void 메시지를_저장하고_DirectMessageDto를_반환한다() {
+      // given
+      UUID senderId = UUID.randomUUID();
+      UUID receiverId = UUID.randomUUID();
+      DirectMessageSendRequest request = fm.giveMeBuilder(DirectMessageSendRequest.class)
+          .set("senderId", senderId)
+          .set("receiverId", receiverId)
+          .set("content", "안녕하세요?")
+          .sample();
+
+      DirectMessage saved = DirectMessage.create(senderId, receiverId, "안녕하세요?");
+      given(directMessageRepository.save(any(DirectMessage.class))).willReturn(saved);
+
+      UserSummary sender = new UserSummary(senderId, "보낸사람", null);
+      UserSummary receiver = new UserSummary(receiverId, "받는사람", null);
+      given(userSummaryQueryRepository.findByUserId(senderId)).willReturn(sender);
+      given(userSummaryQueryRepository.findByUserId(receiverId)).willReturn(receiver);
+
+      DirectMessageDto expected = new DirectMessageDto(
+          saved.getId(), null, sender, receiver, "안녕하세요?");
+      given(directMessageMapper.toDto(saved, sender, receiver)).willReturn(expected);
+
+      // when
+      DirectMessageDto result = directMessageService.send(request, senderId);
+
+      // then
+      assertThat(result).isEqualTo(expected);
+      ArgumentCaptor<DirectMessage> captor = ArgumentCaptor.forClass(DirectMessage.class);
+      verify(directMessageRepository).save(captor.capture());
+      assertThat(captor.getValue().getSenderId()).isEqualTo(senderId);
+      assertThat(captor.getValue().getReceiverId()).isEqualTo(receiverId);
+      assertThat(captor.getValue().getContent()).isEqualTo("안녕하세요?");
+    }
+
+    @Test
+    @DisplayName("senderId가 인증 사용자와 다르면 DirectMessageForbiddenException을 던진다")
+    void senderId가_인증_사용자와_다르면_DirectMessageForbiddenException을_던진다() {
+      // given
+      UUID currentUserId = UUID.randomUUID();
+      UUID otherSenderId = UUID.randomUUID();
+      UUID receiverId = UUID.randomUUID();
+      DirectMessageSendRequest request = fm.giveMeBuilder(DirectMessageSendRequest.class)
+          .set("senderId", otherSenderId)
+          .set("receiverId", receiverId)
+          .set("content", "안녕하세요?")
+          .sample();
+
+      // when & then
+      assertThatThrownBy(() -> directMessageService.send(request, currentUserId))
+          .isInstanceOf(DirectMessageForbiddenException.class);
+    }
+
+    @Test
+    @DisplayName("자기 자신에게 보내면 SelfDirectMessageNotAllowedException을 던진다")
+    void 자기_자신에게_보내면_SelfDirectMessageNotAllowedException을_던진다() {
+      // given
+      UUID userId = UUID.randomUUID();
+      DirectMessageSendRequest request = fm.giveMeBuilder(DirectMessageSendRequest.class)
+          .set("senderId", userId)
+          .set("receiverId", userId)
+          .set("content", "안녕하세요?")
+          .sample();
+
+      // when & then
+      assertThatThrownBy(() -> directMessageService.send(request, userId))
+          .isInstanceOf(SelfDirectMessageNotAllowedException.class);
+    }
+
+    @Test
+    @DisplayName("전송에 성공하면 수신자에게 알림 이벤트를 발행한다")
+    void 전송에_성공하면_수신자에게_알림_이벤트를_발행한다() {
+      // given
+      UUID senderId = UUID.randomUUID();
+      UUID receiverId = UUID.randomUUID();
+      DirectMessageSendRequest request = fm.giveMeBuilder(DirectMessageSendRequest.class)
+          .set("senderId", senderId)
+          .set("receiverId", receiverId)
+          .set("content", "안녕하세요?")
+          .sample();
+
+      DirectMessage saved = DirectMessage.create(senderId, receiverId, "안녕하세요?");
+      given(directMessageRepository.save(any(DirectMessage.class))).willReturn(saved);
+      given(userSummaryQueryRepository.findByUserId(senderId))
+          .willReturn(new UserSummary(senderId, "보낸사람", null));
+      given(userSummaryQueryRepository.findByUserId(receiverId))
+          .willReturn(new UserSummary(receiverId, "받는사람", null));
+
+      // when
+      directMessageService.send(request, senderId);
+
+      // then
+      ArgumentCaptor<NotificationRequestedEvent> captor =
+          ArgumentCaptor.forClass(NotificationRequestedEvent.class);
+      verify(eventPublisher).publishEvent(captor.capture());
+      NotificationRequestedEvent event = captor.getValue();
+      assertThat(event.receiverIds()).containsExactly(receiverId);
+      assertThat(event.title()).isEqualTo("[DM] 보낸사람");
+      assertThat(event.content()).isEqualTo("안녕하세요?");
     }
   }
 }
