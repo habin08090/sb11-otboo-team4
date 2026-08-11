@@ -70,7 +70,7 @@ class RecommendationServiceTest {
   }
 
   private Profile createProfile(UUID userId, int temperatureSensitivity) {
-    Profile profile = Profile.createDefault(null);
+    Profile profile = Profile.create(null);
     ReflectionTestUtils.setField(profile, "id", userId);
     ReflectionTestUtils.setField(profile, "temperatureSensitivity", temperatureSensitivity);
     return profile;
