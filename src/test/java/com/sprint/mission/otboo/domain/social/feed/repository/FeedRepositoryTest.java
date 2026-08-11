@@ -200,4 +200,40 @@ class FeedRepositoryTest {
       assertThat(result).isEmpty();
     }
   }
+
+  @Nested
+  @DisplayName("incrementCommentCount")
+  class IncrementCommentCount {
+
+    @Test
+    @DisplayName("댓글 카운트를 1 증가시키고 수정 행 수 1을 반환한다")
+    void 댓글_카운트를_1_증가시키고_수정_행_수_1을_반환한다() {
+      // given
+      Feed feed = createAndSaveFeed("내용");
+
+      // when
+      int updated = feedRepository.incrementCommentCount(feed.getId());
+
+      // then
+      assertThat(updated).isEqualTo(1);
+      Feed found = feedRepository.findById(feed.getId()).orElseThrow();
+      assertThat(found.getCommentCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("소프트 삭제된 피드는 카운트가 변경되지 않고 0을 반환한다")
+    void 소프트_삭제된_피드는_카운트가_변경되지_않고_0을_반환한다() {
+      // given
+      Feed feed = createAndSaveFeed("내용");
+      setDeletedAt(feed.getId(), Instant.now());
+
+      // when
+      int updated = feedRepository.incrementCommentCount(feed.getId());
+
+      // then
+      assertThat(updated).isZero();
+      Feed found = feedRepository.findById(feed.getId()).orElseThrow();
+      assertThat(found.getCommentCount()).isZero();
+    }
+  }
 }

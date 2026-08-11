@@ -16,13 +16,15 @@ import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.Step;
 import org.springframework.batch.core.step.builder.StepBuilder;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.transaction.PlatformTransactionManager;
 
 @Configuration
 @RequiredArgsConstructor
+@EnableConfigurationProperties(WeatherFetchProperties.class)
 public class WeatherFetchJobConfig {
 
   private final JobRepository jobRepository;
@@ -34,32 +36,40 @@ public class WeatherFetchJobConfig {
   private final WeatherFetchReader weatherFetchReader;
   private final WeatherFetchProcessor weatherFetchProcessor;
   private final WeatherFetchWriter weatherFetchWriter;
-
-  @Value("${batch.weather-fetch.chunk-size}")
-  private int chunkSize;
-
-  @Value("${batch.weather-fetch.skip-limit}")
-  private int skipLimit;
+  private final WeatherFetchProperties weatherFetchProperties;
 
   @Bean(name = "weatherFetchJob")
   public Job weatherFetchJob() {
     return new JobBuilder("weatherFetchJob", jobRepository)
         .listener(weatherFetchJobListener)
         .start(weatherFetchStep())
+        .next(weatherFetchRetryStep())
         .build();
   }
 
   @Bean
   public Step weatherFetchStep() {
-    return new StepBuilder("weatherFetchStep", jobRepository)
-        .<WeatherGrid, List<Weather>>chunk(chunkSize)
+    return buildStep("weatherFetchStep");
+  }
+
+  @Bean
+  public Step weatherFetchRetryStep() {
+    return buildStep("weatherFetchRetryStep");
+  }
+
+  private Step buildStep(String stepName) {
+    return new StepBuilder(stepName, jobRepository)
+        .<WeatherGrid, List<Weather>>chunk(weatherFetchProperties.chunkSize())
         .transactionManager(transactionManager)
         .reader(weatherFetchReader)
         .processor(weatherFetchProcessor)
         .writer(weatherFetchWriter)
         .faultTolerant()
+        .retryLimit(weatherFetchProperties.retryLimit())
+        .retry(KmaApiException.class)
+        .retry(TransientDataAccessException.class)
         .skip(KmaApiException.class)
-        .skipLimit(skipLimit)
+        .skipLimit(weatherFetchProperties.skipLimit())
         .skipListener(skipLoggingListener)
         .listener(weatherFetchStepListener)
         .build();
