@@ -16,16 +16,16 @@ import org.springframework.http.ResponseEntity;
 @Tag(name = "추천 관리", description = "추천 관련 API")
 public interface RecommendationApi {
 
-  @Operation(summary = "추천 조회", description = "추천 조회 API")
+  @Operation(summary = "추천 조회", description = "추천 조회 API. 추천 가능한 의상이 없으면 clothes 필드가 빈 배열로 반환됩니다.")
   @ApiResponses({
       @ApiResponse(
           responseCode = "200",
-          description = "추천 조회 성공",
+          description = "추천 조회 성공 (추천 가능한 의상이 없으면 빈 배열)",
           content = @Content(
               schema = @Schema(implementation = RecommendationDto.class))),
       @ApiResponse(
           responseCode = "400",
-          description = "추천 조회 실패",
+          description = "weatherId 누락 또는 UUID 형식 오류",
           content = @Content(
               schema = @Schema(implementation = ErrorResponse.class))),
       @ApiResponse(

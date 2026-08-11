@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 
 @RequiredArgsConstructor
 @Component
-public class RecommendationMapper {
+public class RecommendationOotdAssembler {
 
   private final ClothesAttributeRepository clothesAttributeRepository;
   private final ClothesAttributeDefValueRepository clothesAttributeDefValueRepository;

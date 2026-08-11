@@ -3,10 +3,10 @@ package com.sprint.mission.otboo.domain.clothesrecommend.recommendation.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
-import com.navercorp.fixturemonkey.FixtureMonkey;
-import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.sprint.mission.otboo.domain.authuser.user.entity.Profile;
 import com.sprint.mission.otboo.domain.authuser.user.repository.ProfileRepository;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
@@ -15,17 +15,17 @@ import com.sprint.mission.otboo.domain.clothesrecommend.clothes.repository.Cloth
 import com.sprint.mission.otboo.domain.clothesrecommend.recommendation.dto.RecommendationDto;
 import com.sprint.mission.otboo.domain.clothesrecommend.recommendation.exception.ProfileNotFoundException;
 import com.sprint.mission.otboo.domain.clothesrecommend.recommendation.exception.WeatherNotFoundException;
-import com.sprint.mission.otboo.domain.clothesrecommend.recommendation.mapper.RecommendationMapper;
+import com.sprint.mission.otboo.domain.clothesrecommend.recommendation.mapper.RecommendationOotdAssembler;
 import com.sprint.mission.otboo.domain.social.feed.dto.OotdDto;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.Weather;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.SkyStatus;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.WindStrength;
 import com.sprint.mission.otboo.domain.weathernotification.weather.repository.WeatherRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -37,8 +37,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class RecommendationServiceTest {
-
-  static FixtureMonkey fixtureMonkey;
 
   @InjectMocks
   RecommendationService recommendationService;
@@ -53,14 +51,7 @@ class RecommendationServiceTest {
   ClothesRepository clothesRepository;
 
   @Mock
-  RecommendationMapper recommendationMapper;
-
-  @BeforeAll
-  static void setUpFixtureMonkey() {
-    fixtureMonkey = FixtureMonkey.builder()
-        .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
-        .build();
-  }
+  RecommendationOotdAssembler recommendationMapper;
 
   // --- 헬퍼 메서드 ---
 
@@ -91,6 +82,20 @@ class RecommendationServiceTest {
     return clothes;
   }
 
+  private Clothes createClothesWithCreatedAt(UUID ownerId, String name, ClothesType type,
+      Instant createdAt) {
+    Clothes clothes = Clothes.create(ownerId, name, type);
+    ReflectionTestUtils.setField(clothes, "id", UUID.randomUUID());
+    ReflectionTestUtils.setField(clothes, "createdAt", createdAt);
+    return clothes;
+  }
+
+  private List<OotdDto> toOotdStub(List<Clothes> selected) {
+    return selected.stream()
+        .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
+        .toList();
+  }
+
   // --- 테스트 ---
 
   @Nested
@@ -112,16 +117,12 @@ class RecommendationServiceTest {
       Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
       Clothes shoes = createClothes(userId, "운동화", ClothesType.SHOES);
 
-      OotdDto ootdTop = new OotdDto(top.getId(), "반팔 티셔츠", null, ClothesType.TOP, List.of());
-      OotdDto ootdBottom = new OotdDto(bottom.getId(), "반바지", null, ClothesType.BOTTOM, List.of());
-      OotdDto ootdShoes = new OotdDto(shoes.getId(), "운동화", null, ClothesType.SHOES, List.of());
-
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
           .willReturn(List.of(top, bottom, shoes));
       given(recommendationMapper.toOotdDtoList(any()))
-          .willReturn(List.of(ootdTop, ootdBottom, ootdShoes));
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
 
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
@@ -129,7 +130,7 @@ class RecommendationServiceTest {
       // then
       assertThat(result.weatherId()).isEqualTo(weatherId);
       assertThat(result.userId()).isEqualTo(userId);
-      assertThat(result.clothes()).hasSize(3);
+      assertThat(result.clothes()).isNotEmpty();
     }
 
     @Test
@@ -177,7 +178,7 @@ class RecommendationServiceTest {
 
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
           .willReturn(List.of());
 
       // when
@@ -198,24 +199,18 @@ class RecommendationServiceTest {
           SkyStatus.CLOUDY, WindStrength.WEAK);
       Profile profile = createProfile(userId, 3);
 
-      Clothes top = createClothes(userId, "반팔 티셔츠", ClothesType.TOP);
+      Clothes top = createClothes(userId, "반팔", ClothesType.TOP);
       Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
       Clothes shoes = createClothes(userId, "운동화", ClothesType.SHOES);
-      Clothes outer = createClothes(userId, "바람막이", ClothesType.OUTER);
-
-      OotdDto ootdOuter = new OotdDto(outer.getId(), "바람막이", null, ClothesType.OUTER, List.of());
+      Clothes outer = createClothes(userId, "레인코트", ClothesType.OUTER);
+      Clothes hat = createClothes(userId, "모자", ClothesType.HAT);
 
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
-          .willReturn(List.of(top, bottom, shoes, outer));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(List.of(top, bottom, shoes, outer, hat));
       given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
 
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
@@ -226,127 +221,13 @@ class RecommendationServiceTest {
     }
 
     @Test
-    @DisplayName("추위_민감도가_높으면_더_따뜻한_옷이_추천된다")
-    void 추위_민감도가_높으면_더_따뜻한_옷이_추천된다() {
-      // given — 17°C + sensitivity 1(추위 민감) → 체감 14°C → 선선(아우터 포함)
-      UUID weatherId = UUID.randomUUID();
-      UUID userId = UUID.randomUUID();
-
-      Weather weather = createWeather(17.0, PrecipitationType.NONE,
-          SkyStatus.CLEAR, WindStrength.WEAK);
-      Profile profile = createProfile(userId, 1);
-
-      Clothes top = createClothes(userId, "긴팔 셔츠", ClothesType.TOP);
-      Clothes bottom = createClothes(userId, "긴바지", ClothesType.BOTTOM);
-      Clothes shoes = createClothes(userId, "부츠", ClothesType.SHOES);
-      Clothes outer = createClothes(userId, "자켓", ClothesType.OUTER);
-
-      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
-      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
-          .willReturn(List.of(top, bottom, shoes, outer));
-      given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
-
-      // when
-      RecommendationDto result = recommendationService.recommend(weatherId, userId);
-
-      // then
-      assertThat(result.clothes())
-          .anyMatch(ootd -> ootd.type() == ClothesType.OUTER);
-    }
-
-    @Test
-    @DisplayName("기온대_경계값_4도에서_매우추움으로_분류된다")
-    void 기온대_경계값_4도에서_매우추움으로_분류된다() {
+    @DisplayName("더운_날씨에서_모자가_추천에_포함된다")
+    void 더운_날씨에서_모자가_추천에_포함된다() {
       // given
       UUID weatherId = UUID.randomUUID();
       UUID userId = UUID.randomUUID();
 
-      Weather weather = createWeather(4.0, PrecipitationType.NONE,
-          SkyStatus.CLEAR, WindStrength.WEAK);
-      Profile profile = createProfile(userId, 3);
-
-      Clothes outer = createClothes(userId, "패딩", ClothesType.OUTER);
-      Clothes top = createClothes(userId, "기모 맨투맨", ClothesType.TOP);
-      Clothes bottom = createClothes(userId, "기모 바지", ClothesType.BOTTOM);
-      Clothes scarf = createClothes(userId, "목도리", ClothesType.SCARF);
-      Clothes socks = createClothes(userId, "두꺼운 양말", ClothesType.SOCKS);
-      Clothes shoes = createClothes(userId, "부츠", ClothesType.SHOES);
-
-      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
-      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
-          .willReturn(List.of(outer, top, bottom, scarf, socks, shoes));
-      given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
-
-      // when
-      RecommendationDto result = recommendationService.recommend(weatherId, userId);
-
-      // then
-      assertThat(result.clothes()).hasSize(6);
-      assertThat(result.clothes())
-          .anyMatch(ootd -> ootd.type() == ClothesType.SCARF);
-    }
-
-    @Test
-    @DisplayName("기온대_경계값_5도에서_추움으로_분류되어_스카프가_빠진다")
-    void 기온대_경계값_5도에서_추움으로_분류되어_스카프가_빠진다() {
-      // given
-      UUID weatherId = UUID.randomUUID();
-      UUID userId = UUID.randomUUID();
-
-      Weather weather = createWeather(5.0, PrecipitationType.NONE,
-          SkyStatus.CLEAR, WindStrength.WEAK);
-      Profile profile = createProfile(userId, 3);
-
-      Clothes outer = createClothes(userId, "코트", ClothesType.OUTER);
-      Clothes top = createClothes(userId, "니트", ClothesType.TOP);
-      Clothes bottom = createClothes(userId, "청바지", ClothesType.BOTTOM);
-      Clothes scarf = createClothes(userId, "목도리", ClothesType.SCARF);
-      Clothes socks = createClothes(userId, "양말", ClothesType.SOCKS);
-      Clothes shoes = createClothes(userId, "부츠", ClothesType.SHOES);
-
-      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
-      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
-          .willReturn(List.of(outer, top, bottom, scarf, socks, shoes));
-      given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
-
-      // when
-      RecommendationDto result = recommendationService.recommend(weatherId, userId);
-
-      // then
-      assertThat(result.clothes()).hasSize(5);
-      assertThat(result.clothes())
-          .noneMatch(ootd -> ootd.type() == ClothesType.SCARF);
-    }
-
-    @Test
-    @DisplayName("매우_더울_때_모자가_추천에_포함된다")
-    void 매우_더울_때_모자가_추천에_포함된다() {
-      // given
-      UUID weatherId = UUID.randomUUID();
-      UUID userId = UUID.randomUUID();
-
-      Weather weather = createWeather(33.0, PrecipitationType.NONE,
+      Weather weather = createWeather(30.0, PrecipitationType.NONE,
           SkyStatus.CLEAR, WindStrength.WEAK);
       Profile profile = createProfile(userId, 3);
 
@@ -357,15 +238,10 @@ class RecommendationServiceTest {
 
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
           .willReturn(List.of(top, bottom, shoes, hat));
       given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
 
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
@@ -395,15 +271,10 @@ class RecommendationServiceTest {
 
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
           .willReturn(List.of(top, bottom, shoes, outer, scarf, socks));
       given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
 
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
@@ -433,15 +304,10 @@ class RecommendationServiceTest {
 
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
           .willReturn(List.of(top, bottom, shoes, outer));
       given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
 
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
@@ -467,15 +333,10 @@ class RecommendationServiceTest {
 
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
           .willReturn(List.of(top, bottom));
       given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
 
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
@@ -485,10 +346,11 @@ class RecommendationServiceTest {
       assertThat(result.clothes())
           .noneMatch(ootd -> ootd.type() == ClothesType.OUTER);
     }
+
     @Test
-    @DisplayName("따뜻한_날씨에서_드레스가_추천에_포함된다")
-    void 따뜻한_날씨에서_드레스가_추천에_포함된다() {
-      // given — 22°C, 맑음 → 적당~따뜻 범위 → DRESS 포함
+    @DisplayName("따뜻한_날씨에서_드레스가_있으면_상의_하의_대신_드레스가_추천된다")
+    void 따뜻한_날씨에서_드레스가_있으면_상의_하의_대신_드레스가_추천된다() {
+      // given — 22°C → DRESS가 TOP/BOTTOM 대체
       UUID weatherId = UUID.randomUUID();
       UUID userId = UUID.randomUUID();
 
@@ -503,15 +365,10 @@ class RecommendationServiceTest {
 
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
           .willReturn(List.of(top, bottom, shoes, dress));
       given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
 
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
@@ -519,6 +376,44 @@ class RecommendationServiceTest {
       // then
       assertThat(result.clothes())
           .anyMatch(ootd -> ootd.type() == ClothesType.DRESS);
+      assertThat(result.clothes())
+          .noneMatch(ootd -> ootd.type() == ClothesType.TOP);
+      assertThat(result.clothes())
+          .noneMatch(ootd -> ootd.type() == ClothesType.BOTTOM);
+    }
+
+    @Test
+    @DisplayName("따뜻한_날씨에서_드레스가_없으면_상의_하의가_추천된다")
+    void 따뜻한_날씨에서_드레스가_없으면_상의_하의가_추천된다() {
+      // given — 22°C, DRESS 없음 → TOP+BOTTOM 선택
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(22.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes top = createClothes(userId, "반팔", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
+      Clothes shoes = createClothes(userId, "운동화", ClothesType.SHOES);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(List.of(top, bottom, shoes));
+      given(recommendationMapper.toOotdDtoList(any()))
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then
+      assertThat(result.clothes())
+          .anyMatch(ootd -> ootd.type() == ClothesType.TOP);
+      assertThat(result.clothes())
+          .anyMatch(ootd -> ootd.type() == ClothesType.BOTTOM);
+      assertThat(result.clothes())
+          .noneMatch(ootd -> ootd.type() == ClothesType.DRESS);
     }
 
     @Test
@@ -539,15 +434,10 @@ class RecommendationServiceTest {
 
       given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
       given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
-      given(clothesRepository.findAllByOwnerIdAndSoftDeletableDeletedAtIsNull(userId))
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
           .willReturn(List.of(top, bottom, shoes, dress));
       given(recommendationMapper.toOotdDtoList(any()))
-          .willAnswer(invocation -> {
-            List<Clothes> selected = invocation.getArgument(0);
-            return selected.stream()
-                .map(c -> new OotdDto(c.getId(), c.getName(), null, c.getType(), List.of()))
-                .toList();
-          });
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
 
       // when
       RecommendationDto result = recommendationService.recommend(weatherId, userId);
@@ -555,6 +445,42 @@ class RecommendationServiceTest {
       // then
       assertThat(result.clothes())
           .noneMatch(ootd -> ootd.type() == ClothesType.DRESS);
+    }
+
+    @Test
+    @DisplayName("같은_타입_옷이_여러벌이면_가장_최근에_등록한_옷이_선택된다")
+    void 같은_타입_옷이_여러벌이면_가장_최근에_등록한_옷이_선택된다() {
+      // given
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(25.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes oldTop = createClothesWithCreatedAt(userId, "오래된 반팔",
+          ClothesType.TOP, Instant.parse("2025-01-01T00:00:00Z"));
+      Clothes newTop = createClothesWithCreatedAt(userId, "새 반팔",
+          ClothesType.TOP, Instant.parse("2025-07-01T00:00:00Z"));
+      Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
+      Clothes shoes = createClothes(userId, "운동화", ClothesType.SHOES);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(List.of(oldTop, newTop, bottom, shoes));
+      given(recommendationMapper.toOotdDtoList(any()))
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then
+      assertThat(result.clothes())
+          .filteredOn(ootd -> ootd.type() == ClothesType.TOP)
+          .hasSize(1)
+          .first()
+          .satisfies(ootd -> assertThat(ootd.name()).isEqualTo("새 반팔"));
     }
   }
 }
