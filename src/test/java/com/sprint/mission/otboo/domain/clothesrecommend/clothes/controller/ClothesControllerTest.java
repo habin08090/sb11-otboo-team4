@@ -31,8 +31,24 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.service.ClothesExtractionService;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.service.ClothesExtractionService;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import org.springframework.test.context.TestPropertySource;
 
 @WebMvcTest(ClothesController.class)
+@TestPropertySource(properties = {
+    "otboo.admin.name=test",
+    "otboo.admin.email=test@test.com",
+    "otboo.admin.password=test1234!",
+    "otboo.file.max-size-bytes=10485760",
+    "otboo.file.allowed-extensions=jpg,jpeg,png,gif,webp",
+    "otboo.file.public-base-url=http://localhost:8080/files",
+    "otboo.file.impl=local",
+    "otboo.file.local.upload-dir=./uploads"
+})
 @WithMockUser
 @DisplayName("ClothesController")
 class ClothesControllerTest {
@@ -42,6 +58,9 @@ class ClothesControllerTest {
 
   @MockitoBean
   ClothesService clothesService;
+
+  @MockitoBean
+  ClothesExtractionService clothesExtractionService;
 
   @Nested
   @DisplayName("옷 수정 - PATCH /api/clothes/{clothesId}")
@@ -139,6 +158,41 @@ class ClothesControllerTest {
       mockMvc.perform(delete("/api/clothes/{clothesId}", clothesId)
               .with(csrf()))
           .andExpect(status().isNotFound());
+    }
+  }
+  @Nested
+  @DisplayName("구매 링크 추출 - GET /api/clothes/extractions")
+  class ExtractByUrl {
+
+    @Test
+    @DisplayName("정상 URL이면 200과 ClothesDto를 반환한다")
+    void 정상_URL이면_200과_ClothesDto를_반환한다() throws Exception {
+      // given
+      ClothesDto expected = new ClothesDto(
+          null, null, "데님 자켓",
+          "https://image.musinsa.com/goods/001.jpg",
+          null, List.of()
+      );
+      when(clothesExtractionService.extractByUrl(anyString())).thenReturn(expected);
+
+      // when & then
+      mockMvc.perform(get("/api/clothes/extractions")
+              .param("url", "https://www.musinsa.com/products/12345")
+              .with(csrf()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.name").value("데님 자켓"))
+          .andExpect(jsonPath("$.imageUrl").value("https://image.musinsa.com/goods/001.jpg"))
+          .andExpect(jsonPath("$.id").doesNotExist())
+          .andExpect(jsonPath("$.ownerId").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("url 파라미터가 없으면 400을 반환한다")
+    void url_파라미터가_없으면_400을_반환한다() throws Exception {
+      // when & then
+      mockMvc.perform(get("/api/clothes/extractions")
+              .with(csrf()))
+          .andExpect(status().isBadRequest());
     }
   }
 }
