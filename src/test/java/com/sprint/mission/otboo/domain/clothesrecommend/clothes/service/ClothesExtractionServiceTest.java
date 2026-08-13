@@ -129,4 +129,72 @@ class ClothesExtractionServiceTest {
           .isInstanceOf(IllegalArgumentException.class);
     }
   }
+  @Nested
+  @DisplayName("Feign 호출 실패")
+  class FeignFailure {
+
+    @Test
+    @DisplayName("페이지 가져오기 실패 시 예외가 전파된다")
+    void 페이지_가져오기_실패시_예외가_전파된다() {
+      // given
+      String url = "https://www.musinsa.com/products/12345";
+      when(purchasePageClient.fetchPage(any()))
+          .thenThrow(new RuntimeException("Connection refused"));
+
+      // when & then
+      assertThatThrownBy(() -> clothesExtractionService.extractByUrl(url))
+          .isInstanceOf(RuntimeException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("LLM 응답 파싱 실패")
+  class LlmParseFailure {
+
+    @Test
+    @DisplayName("LLM이 잘못된 JSON을 반환하면 예외가 발생한다")
+    void LLM이_잘못된_JSON을_반환하면_예외가_발생한다() {
+      // given
+      String url = "https://www.musinsa.com/products/12345";
+      String html = "<html><body>상품</body></html>";
+
+      PurchasePageResponse emptyOg = new PurchasePageResponse(null, null, null, null);
+
+      LlmExtractionResponse badResponse = new LlmExtractionResponse(
+          List.of(new Choice(new Message("assistant", "이건 JSON이 아닙니다")))
+      );
+
+      ReflectionTestUtils.setField(clothesExtractionService, "llmApiKey", "test-key");
+      when(purchasePageClient.fetchPage(any())).thenReturn(html);
+      when(purchasePageParser.parse(html)).thenReturn(emptyOg);
+      when(llmClient.extract(anyString(), any())).thenReturn(badResponse);
+
+      // when & then
+      assertThatThrownBy(() -> clothesExtractionService.extractByUrl(url))
+          .isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
+    @DisplayName("LLM 응답이 빈 content이면 예외가 발생한다")
+    void LLM_응답이_빈_content이면_예외가_발생한다() {
+      // given
+      String url = "https://www.musinsa.com/products/12345";
+      String html = "<html><body>상품</body></html>";
+
+      PurchasePageResponse emptyOg = new PurchasePageResponse(null, null, null, null);
+
+      LlmExtractionResponse emptyResponse = new LlmExtractionResponse(
+          List.of(new Choice(new Message("assistant", "")))
+      );
+
+      ReflectionTestUtils.setField(clothesExtractionService, "llmApiKey", "test-key");
+      when(purchasePageClient.fetchPage(any())).thenReturn(html);
+      when(purchasePageParser.parse(html)).thenReturn(emptyOg);
+      when(llmClient.extract(anyString(), any())).thenReturn(emptyResponse);
+
+      // when & then
+      assertThatThrownBy(() -> clothesExtractionService.extractByUrl(url))
+          .isInstanceOf(RuntimeException.class);
+    }
+  }
 }
