@@ -27,7 +27,6 @@ public class ClothesExtractionService {
   private final PurchasePageClient purchasePageClient;
   private final PurchasePageParser purchasePageParser;
   private final LlmClient llmClient;
-  private final ObjectMapper objectMapper;
 
   @Value("${external.llm.api-key}")
   private String llmApiKey;
@@ -75,7 +74,7 @@ public class ClothesExtractionService {
         + html.substring(0, Math.min(html.length(), 3000));
 
     LlmExtractionRequest request = new LlmExtractionRequest(
-        "google/gemma-3-1b-it:free",
+        "deepseek/deepseek-r1-0528:free",
         List.of(
             new LlmMessage("system", systemPrompt),
             new LlmMessage("user", userPrompt)
@@ -93,7 +92,8 @@ public class ClothesExtractionService {
     }
 
     try {
-      JsonNode node = objectMapper.readTree(content);
+      ObjectMapper mapper = new ObjectMapper();
+      JsonNode node = mapper.readTree(content);
       String name = node.has("name") ? node.get("name").asText(null) : null;
       String imageUrl = node.has("imageUrl") ? node.get("imageUrl").asText(null) : null;
 
