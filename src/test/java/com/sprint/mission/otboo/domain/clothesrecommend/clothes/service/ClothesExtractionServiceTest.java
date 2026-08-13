@@ -23,6 +23,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.mockito.Spy;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesExtractionServiceTest {
@@ -38,6 +40,9 @@ class ClothesExtractionServiceTest {
 
   @Mock
   LlmClient llmClient;
+
+  @Spy
+  ObjectMapper objectMapper = new ObjectMapper();
 
   @Nested
   @DisplayName("OG 태그 파싱 성공")
