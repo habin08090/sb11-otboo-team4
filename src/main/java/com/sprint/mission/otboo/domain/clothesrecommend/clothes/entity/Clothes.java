@@ -77,6 +77,9 @@ public class Clothes {
   }
 
   public void delete() {
+    if (softDeletable == null) {
+      softDeletable = new SoftDeletable();
+    }
     softDeletable.delete();
   }
 
