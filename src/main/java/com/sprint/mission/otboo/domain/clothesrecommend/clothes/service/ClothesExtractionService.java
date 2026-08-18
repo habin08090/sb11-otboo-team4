@@ -123,7 +123,7 @@ public class ClothesExtractionService {
     );
 
     try {
-      LlmExtractionResponse response = llmClient.extract("Bearer " + llmProperties.apiKey(), request);
+      LlmExtractionResponse response = llmClient.extract(request);
       return parseLlmResponse(response);
     } catch (ClothesExtractionFailedException e) {
       throw e;

@@ -3,15 +3,16 @@ package com.sprint.mission.otboo.domain.clothesrecommend.clothes.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.navercorp.fixturemonkey.FixtureMonkey;
 import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesDto;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.exception.ClothesExtractionBadRequestException;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.exception.ClothesExtractionFailedException;
 import com.sprint.mission.otboo.external.llm.LlmClient;
+import com.sprint.mission.otboo.external.llm.LlmProperties;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse.Choice;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse.Message;
@@ -25,10 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import com.sprint.mission.otboo.external.llm.LlmProperties;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.Spy;
+import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesExtractionServiceTest {
@@ -105,11 +104,10 @@ class ClothesExtractionServiceTest {
           List.of(new Choice(new Message("assistant", llmJson)))
       );
 
-      when(llmProperties.apiKey()).thenReturn("test-key");
       when(llmProperties.model()).thenReturn("test-model");
       when(purchasePageClient.fetchPage(any())).thenReturn(html);
       when(purchasePageParser.parse(html)).thenReturn(emptyOg);
-      when(llmClient.extract(anyString(), any())).thenReturn(llmResponse);
+      when(llmClient.extract(any())).thenReturn(llmResponse);
 
       // when
       ClothesDto result = clothesExtractionService.extractByUrl(url);
@@ -193,11 +191,10 @@ class ClothesExtractionServiceTest {
           List.of(new Choice(new Message("assistant", "이건 JSON이 아닙니다")))
       );
 
-      when(llmProperties.apiKey()).thenReturn("test-key");
       when(llmProperties.model()).thenReturn("test-model");
       when(purchasePageClient.fetchPage(any())).thenReturn(html);
       when(purchasePageParser.parse(html)).thenReturn(emptyOg);
-      when(llmClient.extract(anyString(), any())).thenReturn(badResponse);
+      when(llmClient.extract(any())).thenReturn(badResponse);
 
       // when & then
       assertThatThrownBy(() -> clothesExtractionService.extractByUrl(url))
@@ -217,11 +214,10 @@ class ClothesExtractionServiceTest {
           List.of(new Choice(new Message("assistant", "")))
       );
 
-      when(llmProperties.apiKey()).thenReturn("test-key");
       when(llmProperties.model()).thenReturn("test-model");
       when(purchasePageClient.fetchPage(any())).thenReturn(html);
       when(purchasePageParser.parse(html)).thenReturn(emptyOg);
-      when(llmClient.extract(anyString(), any())).thenReturn(emptyResponse);
+      when(llmClient.extract(any())).thenReturn(emptyResponse);
 
       // when & then
       assertThatThrownBy(() -> clothesExtractionService.extractByUrl(url))
