@@ -25,11 +25,13 @@ import org.jsoup.Jsoup;
 @Service
 public class ClothesExtractionService {
 
+  private static final int MAX_BODY_TEXT_CHARS = 3000;
   private final PurchasePageClient purchasePageClient;
   private final PurchasePageParser purchasePageParser;
   private final LlmClient llmClient;
 
   private final LlmProperties llmProperties;
+  private final ObjectMapper objectMapper;
 
   public ClothesDto extractByUrl(String url) {
     validateUrl(url);
@@ -91,7 +93,7 @@ public class ClothesExtractionService {
 
     String bodyText = extractBodyText(html);
     String userPrompt = "다음 텍스트에서 의상 정보를 추출하세요:\n"
-        + bodyText.substring(0, Math.min(bodyText.length(), 3000));
+        + bodyText.substring(0, Math.min(bodyText.length(), MAX_BODY_TEXT_CHARS));
 
     LlmExtractionRequest request = new LlmExtractionRequest(
         llmProperties.model(),
@@ -120,9 +122,8 @@ public class ClothesExtractionService {
     }
 
     try {
-      ObjectMapper mapper = new ObjectMapper();
       String json = stripCodeFence(content);
-      JsonNode node = mapper.readTree(json);
+      JsonNode node = objectMapper.readTree(json);
       String name = node.has("name") ? node.get("name").asText(null) : null;
       String imageUrl = node.has("imageUrl") ? node.get("imageUrl").asText(null) : null;
 
