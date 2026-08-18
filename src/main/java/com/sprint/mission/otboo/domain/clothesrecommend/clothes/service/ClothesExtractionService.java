@@ -3,6 +3,8 @@ package com.sprint.mission.otboo.domain.clothesrecommend.clothes.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesDto;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.exception.ClothesExtractionBadRequestException;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.exception.ClothesExtractionFailedException;
 import com.sprint.mission.otboo.external.llm.LlmClient;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractionRequest;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractionRequest.LlmMessage;
@@ -34,7 +36,7 @@ public class ClothesExtractionService {
   public ClothesDto extractByUrl(String url) {
     validateUrl(url);
 
-    String html = purchasePageClient.fetchPage(URI.create(url));
+    String html = fetchPage(url);
     PurchasePageResponse ogResult = purchasePageParser.parse(html);
 
     if (!ogResult.isEmpty()) {
@@ -42,12 +44,31 @@ public class ClothesExtractionService {
     }
 
     log.info("OG 태그 파싱 실패, LLM 폴백 시도: {}", url);
-    return extractByLlm(html);
+    return extractByLlm(url, html);
   }
 
   private void validateUrl(String url) {
     if (url == null || url.isBlank()) {
-      throw new IllegalArgumentException("URL은 필수입니다.");
+      throw ClothesExtractionBadRequestException.invalidUrl(url);
+    }
+
+    try {
+      URI uri = URI.create(url);
+      String scheme = uri.getScheme();
+      if (scheme == null || !scheme.equals("https")) {
+        throw ClothesExtractionBadRequestException.invalidUrl(url);
+      }
+    } catch (IllegalArgumentException e) {
+      throw ClothesExtractionBadRequestException.invalidUrl(url);
+    }
+  }
+
+  private String fetchPage(String url) {
+    try {
+      return purchasePageClient.fetchPage(URI.create(url));
+    } catch (Exception e) {
+      log.error("구매 페이지 요청 실패: url={}, 예외={}", url, e.getClass().getSimpleName());
+      throw ClothesExtractionFailedException.pageFetchFailed(url, e);
     }
   }
 
@@ -62,7 +83,7 @@ public class ClothesExtractionService {
     );
   }
 
-  private ClothesDto extractByLlm(String html) {
+  private ClothesDto extractByLlm(String url, String html) {
     String systemPrompt = """
         당신은 쇼핑몰 상품 페이지의 HTML을 분석하는 전문가입니다.
         HTML에서 의상 정보를 추출하여 아래 JSON 형식으로만 응답하세요.
@@ -81,14 +102,22 @@ public class ClothesExtractionService {
         )
     );
 
-    LlmExtractionResponse response = llmClient.extract("Bearer " + llmApiKey, request);
-    return parseLlmResponse(response);
+    try {
+      LlmExtractionResponse response = llmClient.extract("Bearer " + llmApiKey, request);
+      return parseLlmResponse(response);
+    } catch (ClothesExtractionFailedException e) {
+      throw e;
+    } catch (Exception e) {
+      log.error("LLM 호출 실패: url={}, 예외={}", url, e.getClass().getSimpleName());
+      throw ClothesExtractionFailedException.llmCallFailed(e);
+    }
   }
 
   private ClothesDto parseLlmResponse(LlmExtractionResponse response) {
     String content = response.getContent();
     if (content == null || content.isBlank()) {
-      throw new RuntimeException("LLM 응답이 비어있습니다.");
+      log.error("LLM 응답이 비어있음");
+      throw ClothesExtractionFailedException.llmParseFailed();
     }
 
     try {
@@ -99,8 +128,8 @@ public class ClothesExtractionService {
 
       return new ClothesDto(null, null, name, imageUrl, null, List.of());
     } catch (Exception e) {
-      log.error("LLM 응답 파싱 실패: {}", content, e);
-      throw new RuntimeException("LLM 응답을 파싱할 수 없습니다.", e);
+      log.error("LLM 응답 파싱 실패: 응답 길이={}, 예외={}", content.length(), e.getClass().getSimpleName());
+      throw ClothesExtractionFailedException.llmParseFailed();
     }
   }
 }
