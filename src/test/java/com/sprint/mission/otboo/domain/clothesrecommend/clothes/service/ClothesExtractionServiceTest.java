@@ -6,7 +6,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
+import com.navercorp.fixturemonkey.FixtureMonkey;
+import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesDto;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.exception.ClothesExtractionBadRequestException;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.exception.ClothesExtractionFailedException;
 import com.sprint.mission.otboo.external.llm.LlmClient;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse.Choice;
@@ -23,11 +27,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.mockito.Spy;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesExtractionServiceTest {
+
+  private static final FixtureMonkey fixtureMonkey = FixtureMonkey.builder()
+      .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
+      .build();
 
   @InjectMocks
   ClothesExtractionService clothesExtractionService;
@@ -41,9 +47,6 @@ class ClothesExtractionServiceTest {
   @Mock
   LlmClient llmClient;
 
-  @Spy
-  ObjectMapper objectMapper = new ObjectMapper();
-
   @Nested
   @DisplayName("OG 태그 파싱 성공")
   class OgTagSuccess {
@@ -55,12 +58,10 @@ class ClothesExtractionServiceTest {
       String url = "https://www.musinsa.com/products/12345";
       String html = "<html><head><meta property='og:title' content='데님 자켓'/></head></html>";
 
-      PurchasePageResponse ogResult = new PurchasePageResponse(
-          "데님 자켓",
-          "https://image.musinsa.com/goods/001.jpg",
-          "클래식한 데님 자켓",
-          "무신사"
-      );
+      PurchasePageResponse ogResult = fixtureMonkey.giveMeBuilder(PurchasePageResponse.class)
+          .set("title", "데님 자켓")
+          .set("imageUrl", "https://image.musinsa.com/goods/001.jpg")
+          .sample();
 
       when(purchasePageClient.fetchPage(any())).thenReturn(html);
       when(purchasePageParser.parse(html)).thenReturn(ogResult);
@@ -118,7 +119,7 @@ class ClothesExtractionServiceTest {
     void URL이_빈_문자열이면_예외가_발생한다() {
       // when & then
       assertThatThrownBy(() -> clothesExtractionService.extractByUrl(""))
-          .isInstanceOf(IllegalArgumentException.class);
+          .isInstanceOf(ClothesExtractionBadRequestException.class);
     }
 
     @Test
@@ -126,9 +127,19 @@ class ClothesExtractionServiceTest {
     void URL이_null이면_예외가_발생한다() {
       // when & then
       assertThatThrownBy(() -> clothesExtractionService.extractByUrl(null))
-          .isInstanceOf(IllegalArgumentException.class);
+          .isInstanceOf(ClothesExtractionBadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("HTTP URL이면 예외가 발생한다")
+    void HTTP_URL이면_예외가_발생한다() {
+      // when & then
+      assertThatThrownBy(() ->
+          clothesExtractionService.extractByUrl("http://www.musinsa.com/products/12345"))
+          .isInstanceOf(ClothesExtractionBadRequestException.class);
     }
   }
+
   @Nested
   @DisplayName("Feign 호출 실패")
   class FeignFailure {
@@ -143,7 +154,7 @@ class ClothesExtractionServiceTest {
 
       // when & then
       assertThatThrownBy(() -> clothesExtractionService.extractByUrl(url))
-          .isInstanceOf(RuntimeException.class);
+          .isInstanceOf(ClothesExtractionFailedException.class);
     }
   }
 
@@ -171,7 +182,7 @@ class ClothesExtractionServiceTest {
 
       // when & then
       assertThatThrownBy(() -> clothesExtractionService.extractByUrl(url))
-          .isInstanceOf(RuntimeException.class);
+          .isInstanceOf(ClothesExtractionFailedException.class);
     }
 
     @Test
@@ -194,7 +205,7 @@ class ClothesExtractionServiceTest {
 
       // when & then
       assertThatThrownBy(() -> clothesExtractionService.extractByUrl(url))
-          .isInstanceOf(RuntimeException.class);
+          .isInstanceOf(ClothesExtractionFailedException.class);
     }
   }
 }
