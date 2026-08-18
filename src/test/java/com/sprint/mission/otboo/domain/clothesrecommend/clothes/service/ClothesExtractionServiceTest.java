@@ -26,7 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
+import com.sprint.mission.otboo.external.llm.LlmProperties;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesExtractionServiceTest {
@@ -46,6 +46,9 @@ class ClothesExtractionServiceTest {
 
   @Mock
   LlmClient llmClient;
+
+  @Mock
+  LlmProperties llmProperties;
 
   @Nested
   @DisplayName("OG 태그 파싱 성공")
@@ -97,7 +100,8 @@ class ClothesExtractionServiceTest {
           List.of(new Choice(new Message("assistant", llmJson)))
       );
 
-      ReflectionTestUtils.setField(clothesExtractionService, "llmApiKey", "test-key");
+      when(llmProperties.apiKey()).thenReturn("test-key");
+      when(llmProperties.model()).thenReturn("test-model");
       when(purchasePageClient.fetchPage(any())).thenReturn(html);
       when(purchasePageParser.parse(html)).thenReturn(emptyOg);
       when(llmClient.extract(anyString(), any())).thenReturn(llmResponse);
@@ -175,7 +179,8 @@ class ClothesExtractionServiceTest {
           List.of(new Choice(new Message("assistant", "이건 JSON이 아닙니다")))
       );
 
-      ReflectionTestUtils.setField(clothesExtractionService, "llmApiKey", "test-key");
+      when(llmProperties.apiKey()).thenReturn("test-key");
+      when(llmProperties.model()).thenReturn("test-model");
       when(purchasePageClient.fetchPage(any())).thenReturn(html);
       when(purchasePageParser.parse(html)).thenReturn(emptyOg);
       when(llmClient.extract(anyString(), any())).thenReturn(badResponse);
@@ -198,7 +203,8 @@ class ClothesExtractionServiceTest {
           List.of(new Choice(new Message("assistant", "")))
       );
 
-      ReflectionTestUtils.setField(clothesExtractionService, "llmApiKey", "test-key");
+      when(llmProperties.apiKey()).thenReturn("test-key");
+      when(llmProperties.model()).thenReturn("test-model");
       when(purchasePageClient.fetchPage(any())).thenReturn(html);
       when(purchasePageParser.parse(html)).thenReturn(emptyOg);
       when(llmClient.extract(anyString(), any())).thenReturn(emptyResponse);

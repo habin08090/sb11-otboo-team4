@@ -16,7 +16,7 @@ import java.net.URI;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import com.sprint.mission.otboo.external.llm.LlmProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +30,7 @@ public class ClothesExtractionService {
   private final PurchasePageParser purchasePageParser;
   private final LlmClient llmClient;
 
-  @Value("${external.llm.api-key}")
-  private String llmApiKey;
+  private final LlmProperties llmProperties;
 
   public ClothesDto extractByUrl(String url) {
     validateUrl(url);
@@ -95,7 +94,7 @@ public class ClothesExtractionService {
         + html.substring(0, Math.min(html.length(), 3000));
 
     LlmExtractionRequest request = new LlmExtractionRequest(
-        "deepseek/deepseek-r1-0528:free",
+        llmProperties.model(),
         List.of(
             new LlmMessage("system", systemPrompt),
             new LlmMessage("user", userPrompt)
@@ -103,7 +102,7 @@ public class ClothesExtractionService {
     );
 
     try {
-      LlmExtractionResponse response = llmClient.extract("Bearer " + llmApiKey, request);
+      LlmExtractionResponse response = llmClient.extract("Bearer " + llmProperties.apiKey(), request);
       return parseLlmResponse(response);
     } catch (ClothesExtractionFailedException e) {
       throw e;
