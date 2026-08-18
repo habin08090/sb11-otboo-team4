@@ -7,9 +7,11 @@ import java.time.Duration;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import com.sprint.mission.otboo.external.llm.LlmProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
-@Configuration
 @EnableFeignClients(basePackages = "com.sprint.mission.otboo.external")
+@EnableConfigurationProperties(LlmProperties.class)
 public class FeignConfig {
 
   @Bean

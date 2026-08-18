@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.sprint.mission.otboo.external.llm.LlmProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.jsoup.Jsoup;
 
 @Slf4j
 @Transactional(readOnly = true)
@@ -90,8 +91,9 @@ public class ClothesExtractionService {
         {"name": "상품명", "imageUrl": "이미지URL"}
         """;
 
-    String userPrompt = "다음 HTML에서 의상 정보를 추출하세요:\n"
-        + html.substring(0, Math.min(html.length(), 3000));
+    String bodyText = extractBodyText(html);
+    String userPrompt = "다음 텍스트에서 의상 정보를 추출하세요:\n"
+        + bodyText.substring(0, Math.min(bodyText.length(), 3000));
 
     LlmExtractionRequest request = new LlmExtractionRequest(
         llmProperties.model(),
@@ -121,7 +123,8 @@ public class ClothesExtractionService {
 
     try {
       ObjectMapper mapper = new ObjectMapper();
-      JsonNode node = mapper.readTree(content);
+      String json = stripCodeFence(content);
+      JsonNode node = mapper.readTree(json);
       String name = node.has("name") ? node.get("name").asText(null) : null;
       String imageUrl = node.has("imageUrl") ? node.get("imageUrl").asText(null) : null;
 
@@ -130,5 +133,21 @@ public class ClothesExtractionService {
       log.error("LLM 응답 파싱 실패: 응답 길이={}, 예외={}", content.length(), e.getClass().getSimpleName());
       throw ClothesExtractionFailedException.llmParseFailed();
     }
+  }
+  private String extractBodyText(String html) {
+    var doc = Jsoup.parse(html);
+    doc.select("script, style").remove();
+    return doc.body() != null ? doc.body().text() : "";
+  }
+
+  private String stripCodeFence(String content) {
+    String stripped = content.strip();
+    if (stripped.startsWith("```")) {
+      stripped = stripped.replaceFirst("```\\w*\\n?", "");
+      if (stripped.endsWith("```")) {
+        stripped = stripped.substring(0, stripped.lastIndexOf("```"));
+      }
+    }
+    return stripped.strip();
   }
 }
