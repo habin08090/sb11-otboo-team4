@@ -1,15 +1,18 @@
 package com.sprint.mission.otboo.external.llm.dto;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
 
 public record LlmExtractionRequest(
-    String model,
-    List<LlmMessage> messages
+    @NotBlank String model,
+    @NotEmpty List<@Valid LlmMessage> messages
 ) {
 
   public record LlmMessage(
-      String role,
-      String content
+      @NotBlank String role,
+      @NotBlank String content
   ) {
 
   }
