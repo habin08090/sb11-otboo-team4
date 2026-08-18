@@ -24,7 +24,7 @@ public class PurchasePageParser {
   }
 
   private String getOgContent(Document doc, String property) {
-    return doc.select("meta[property=" + property + "]")
+    return doc.select("meta[property=" + property + "], meta[name=" + property + "]")
         .stream()
         .findFirst()
         .map(element -> element.attr("content"))
