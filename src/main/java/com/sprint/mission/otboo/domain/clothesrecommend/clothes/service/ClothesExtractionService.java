@@ -18,11 +18,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import com.sprint.mission.otboo.external.llm.LlmProperties;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.jsoup.Jsoup;
 
 @Slf4j
-@Transactional(readOnly = true)
 @RequiredArgsConstructor
 @Service
 public class ClothesExtractionService {
