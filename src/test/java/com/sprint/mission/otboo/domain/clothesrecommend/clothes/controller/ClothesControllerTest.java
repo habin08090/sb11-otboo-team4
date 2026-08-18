@@ -1,13 +1,16 @@
 package com.sprint.mission.otboo.domain.clothesrecommend.clothes.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,6 +19,7 @@ import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesDto;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesUpdateRequest;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.exception.ClothesNotFoundException;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.service.ClothesExtractionService;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.service.ClothesService;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -29,30 +33,14 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import com.sprint.mission.otboo.domain.clothesrecommend.clothes.service.ClothesExtractionService;
-import com.sprint.mission.otboo.domain.clothesrecommend.clothes.service.ClothesExtractionService;
-
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-
-import org.springframework.test.context.TestPropertySource;
 
 @WebMvcTest(ClothesController.class)
-@TestPropertySource(properties = {
-    "otboo.admin.name=test",
-    "otboo.admin.email=test@test.com",
-    "otboo.admin.password=test1234!",
-    "otboo.file.max-size-bytes=10485760",
-    "otboo.file.allowed-extensions=jpg,jpeg,png,gif,webp",
-    "otboo.file.public-base-url=http://localhost:8080/files",
-    "otboo.file.impl=local",
-    "otboo.file.local.upload-dir=./uploads"
-})
+@ActiveProfiles("test")
 @WithMockUser
-@DisplayName("ClothesController")
+@DisplayName("의상 컨트롤러")
 class ClothesControllerTest {
 
   @Autowired
@@ -65,7 +53,7 @@ class ClothesControllerTest {
   ClothesExtractionService clothesExtractionService;
 
   @Nested
-  @DisplayName("옷 수정 - PATCH /api/clothes/{clothesId}")
+  @DisplayName("옷 수정: PATCH /api/clothes/{clothesId}")
   class UpdateClothes {
 
     @Test
@@ -130,7 +118,7 @@ class ClothesControllerTest {
   }
 
   @Nested
-  @DisplayName("옷 삭제 - DELETE /api/clothes/{clothesId}")
+  @DisplayName("옷 삭제: DELETE /api/clothes/{clothesId}")
   class DeleteClothes {
 
     @Test
@@ -164,7 +152,7 @@ class ClothesControllerTest {
   }
 
   @Nested
-  @DisplayName("구매 링크 추출 - GET /api/clothes/extractions")
+  @DisplayName("구매 링크 추출: GET /api/clothes/extractions")
   class ExtractByUrl {
 
     @Test
@@ -194,6 +182,16 @@ class ClothesControllerTest {
     void url_파라미터가_없으면_400을_반환한다() throws Exception {
       // when & then
       mockMvc.perform(get("/api/clothes/extractions")
+              .with(csrf()))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("url 파라미터가 빈 문자열이면 400을 반환한다")
+    void url_파라미터가_빈_문자열이면_400을_반환한다() throws Exception {
+      // when & then
+      mockMvc.perform(get("/api/clothes/extractions")
+              .param("url", "")
               .with(csrf()))
           .andExpect(status().isBadRequest());
     }
