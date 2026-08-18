@@ -48,7 +48,6 @@ dependencies {
     implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
     implementation platform('software.amazon.awssdk:bom:2.51.4')
     implementation 'software.amazon.awssdk:s3'
-    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     implementation 'org.jsoup:jsoup:1.18.1'
 
     annotationProcessor 'org.projectlombok:lombok'
