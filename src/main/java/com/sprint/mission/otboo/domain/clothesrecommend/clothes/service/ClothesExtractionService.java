@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import com.sprint.mission.otboo.external.llm.LlmProperties;
 import org.springframework.stereotype.Service;
 import org.jsoup.Jsoup;
+import java.util.Set;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -27,6 +28,17 @@ public class ClothesExtractionService {
 
   private static final int MAX_BODY_TEXT_CHARS = 3000;
   private final PurchasePageClient purchasePageClient;
+  private static final Set<String> ALLOWED_HOSTS = Set.of(
+      "www.musinsa.com",
+      "musinsa.com",
+      "store.musinsa.com",
+      "www.29cm.co.kr",
+      "29cm.co.kr",
+      "www.wconcept.co.kr",
+      "wconcept.co.kr",
+      "zigzag.kr",
+      "www.zigzag.kr"
+  );
   private final PurchasePageParser purchasePageParser;
   private final LlmClient llmClient;
 
@@ -58,6 +70,13 @@ public class ClothesExtractionService {
       if (scheme == null || !scheme.equals("https")) {
         throw ClothesExtractionBadRequestException.invalidUrl(url);
       }
+
+      String host = uri.getHost();
+      if (host == null || !ALLOWED_HOSTS.contains(host)) {
+        throw ClothesExtractionBadRequestException.invalidUrl(url);
+      }
+    } catch (ClothesExtractionBadRequestException e) {
+      throw e;
     } catch (IllegalArgumentException e) {
       throw ClothesExtractionBadRequestException.invalidUrl(url);
     }

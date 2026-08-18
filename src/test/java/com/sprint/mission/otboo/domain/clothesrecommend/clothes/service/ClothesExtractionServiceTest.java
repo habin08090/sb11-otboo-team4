@@ -27,6 +27,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import com.sprint.mission.otboo.external.llm.LlmProperties;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.mockito.Spy;
 
 @ExtendWith(MockitoExtension.class)
 class ClothesExtractionServiceTest {
@@ -49,6 +51,9 @@ class ClothesExtractionServiceTest {
 
   @Mock
   LlmProperties llmProperties;
+
+  @Spy
+  ObjectMapper objectMapper = new ObjectMapper();
 
   @Nested
   @DisplayName("OG 태그 파싱 성공")
@@ -140,6 +145,15 @@ class ClothesExtractionServiceTest {
       // when & then
       assertThatThrownBy(() ->
           clothesExtractionService.extractByUrl("http://www.musinsa.com/products/12345"))
+          .isInstanceOf(ClothesExtractionBadRequestException.class);
+    }
+
+    @Test
+    @DisplayName("허용되지 않은 호스트이면 예외가 발생한다")
+    void 허용되지_않은_호스트이면_예외가_발생한다() {
+      // when & then
+      assertThatThrownBy(() ->
+          clothesExtractionService.extractByUrl("https://evil.com/products/12345"))
           .isInstanceOf(ClothesExtractionBadRequestException.class);
     }
   }
