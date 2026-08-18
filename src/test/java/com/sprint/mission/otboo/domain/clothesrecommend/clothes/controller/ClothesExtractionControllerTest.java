@@ -35,7 +35,7 @@ import org.springframework.test.web.servlet.MockMvc;
     "otboo.auth.user-session.impl=redis",
     "otboo.auth.refresh-cookie.secure=false"
 })
-@DisplayName("ClothesExtractionController")
+@DisplayName("의상 URL 추출 컨트롤러")
 class ClothesExtractionControllerTest {
 
   @Autowired
@@ -48,7 +48,7 @@ class ClothesExtractionControllerTest {
   ClothesExtractionService clothesExtractionService;
 
   @Nested
-  @DisplayName("GET /api/clothes/extractions")
+  @DisplayName("의상 URL 추출 요청: GET /api/clothes/extractions")
   class ExtractByUrl {
 
     @Test
@@ -78,6 +78,16 @@ class ClothesExtractionControllerTest {
     void url_파라미터가_없으면_400을_반환한다() throws Exception {
       // when & then
       mockMvc.perform(get("/api/clothes/extractions")
+              .with(csrf()))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("url 파라미터가 빈 문자열이면 400을 반환한다")
+    void url_파라미터가_빈_문자열이면_400을_반환한다() throws Exception {
+      // when & then
+      mockMvc.perform(get("/api/clothes/extractions")
+              .param("url", "")
               .with(csrf()))
           .andExpect(status().isBadRequest());
     }
