@@ -16,6 +16,8 @@ import java.util.UUID;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesExtractionParams;
+import jakarta.validation.Valid;
 
 @Tag(name = "의상 관리", description = "의상 관련 API")
 public interface ClothesApi {
@@ -91,5 +93,5 @@ public interface ClothesApi {
           content = @Content(
               schema = @Schema(implementation = ErrorResponse.class)))
   })
-  ResponseEntity<ClothesDto> extractByUrl(String url);
+  ResponseEntity<ClothesDto> extractByUrl(@ParameterObject @Valid ClothesExtractionParams params);
 }
