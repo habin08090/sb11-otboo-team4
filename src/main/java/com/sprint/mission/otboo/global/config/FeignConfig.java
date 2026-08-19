@@ -38,8 +38,4 @@ public class FeignConfig {
     return new FeignErrorDecoder();
   }
 
-  @Bean
-  public ObjectMapper objectMapper() {
-    return new ObjectMapper();
-  }
 }
