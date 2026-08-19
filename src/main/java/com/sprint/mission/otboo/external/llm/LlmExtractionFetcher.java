@@ -1,9 +1,9 @@
 package com.sprint.mission.otboo.external.llm;
 
+import com.sprint.mission.otboo.external.llm.dto.LlmChatRequest;
+import com.sprint.mission.otboo.external.llm.dto.LlmChatRequest.LlmMessage;
+import com.sprint.mission.otboo.external.llm.dto.LlmChatResponse;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractedClothesInfo;
-import com.sprint.mission.otboo.external.llm.dto.LlmExtractionRequest;
-import com.sprint.mission.otboo.external.llm.dto.LlmExtractionRequest.LlmMessage;
-import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse;
 import com.sprint.mission.otboo.external.llm.exception.LlmApiException;
 import feign.FeignException;
 import java.util.List;
@@ -38,7 +38,7 @@ public class LlmExtractionFetcher {
     String userPrompt = "다음 텍스트에서 의상 정보를 추출하세요:\n"
         + bodyText.substring(0, Math.min(bodyText.length(), MAX_BODY_TEXT_CHARS));
 
-    LlmExtractionRequest request = new LlmExtractionRequest(
+    LlmChatRequest request = new LlmChatRequest(
         model,
         List.of(
             new LlmMessage("system", SYSTEM_PROMPT),
@@ -46,9 +46,9 @@ public class LlmExtractionFetcher {
         )
     );
 
-    LlmExtractionResponse response;
+    LlmChatResponse response;
     try {
-      response = llmClient.extract(request);
+      response = llmClient.chat(request);
     } catch (FeignException e) {
       throw LlmApiException.callFailed(e);
     }

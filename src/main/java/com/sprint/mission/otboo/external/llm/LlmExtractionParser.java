@@ -1,7 +1,7 @@
 package com.sprint.mission.otboo.external.llm;
 
+import com.sprint.mission.otboo.external.llm.dto.LlmChatResponse;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractedClothesInfo;
-import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse;
 import com.sprint.mission.otboo.external.llm.exception.LlmApiException;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -16,7 +16,7 @@ public class LlmExtractionParser {
     this.objectMapper = objectMapper;
   }
 
-  public LlmExtractedClothesInfo parse(LlmExtractionResponse response) {
+  public LlmExtractedClothesInfo parse(LlmChatResponse response) {
     if (response == null || response.choices() == null || response.choices().isEmpty()) {
       throw LlmApiException.parseFailed();
     }

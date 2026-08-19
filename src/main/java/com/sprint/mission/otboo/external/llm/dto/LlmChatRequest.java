@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import java.util.List;
 
-public record LlmExtractionRequest(
+public record LlmChatRequest(
     @NotBlank String model,
     @NotEmpty List<@Valid LlmMessage> messages
 ) {

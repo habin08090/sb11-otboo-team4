@@ -6,11 +6,11 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.sprint.mission.otboo.external.llm.dto.LlmChatRequest;
+import com.sprint.mission.otboo.external.llm.dto.LlmChatResponse;
+import com.sprint.mission.otboo.external.llm.dto.LlmChatResponse.Choice;
+import com.sprint.mission.otboo.external.llm.dto.LlmChatResponse.Message;
 import com.sprint.mission.otboo.external.llm.dto.LlmExtractedClothesInfo;
-import com.sprint.mission.otboo.external.llm.dto.LlmExtractionRequest;
-import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse;
-import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse.Choice;
-import com.sprint.mission.otboo.external.llm.dto.LlmExtractionResponse.Message;
 import com.sprint.mission.otboo.external.llm.exception.LlmApiException;
 import feign.FeignException;
 import feign.Request;
@@ -42,11 +42,11 @@ class LlmExtractionFetcherTest {
       LlmExtractionFetcher fetcher = new LlmExtractionFetcher(llmClient, llmExtractionParser,
           "test-model");
       String html = "<html><body><h1>데님 자켓</h1></body></html>";
-      LlmExtractionResponse response =
-          new LlmExtractionResponse(List.of(new Choice(new Message("assistant", "{}"))));
+      LlmChatResponse response =
+          new LlmChatResponse(List.of(new Choice(new Message("assistant", "{}"))));
       LlmExtractedClothesInfo info = new LlmExtractedClothesInfo("데님 자켓", null);
 
-      given(llmClient.extract(any(LlmExtractionRequest.class))).willReturn(response);
+      given(llmClient.chat(any(LlmChatRequest.class))).willReturn(response);
       given(llmExtractionParser.parse(response)).willReturn(info);
 
       LlmExtractedClothesInfo result = fetcher.extract(html);
@@ -61,8 +61,8 @@ class LlmExtractionFetcherTest {
           "test-model");
       String html = "<html></html>";
 
-      FeignException feignException = FeignException.errorStatus("LlmClient#extract", response());
-      given(llmClient.extract(any(LlmExtractionRequest.class))).willThrow(feignException);
+      FeignException feignException = FeignException.errorStatus("LlmClient#chat", response());
+      given(llmClient.chat(any(LlmChatRequest.class))).willThrow(feignException);
 
       assertThatThrownBy(() -> fetcher.extract(html))
           .isInstanceOf(LlmApiException.class);

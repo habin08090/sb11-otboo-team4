@@ -2,7 +2,7 @@ package com.sprint.mission.otboo.external.llm.dto;
 
 import java.util.List;
 
-public record LlmExtractionResponse(
+public record LlmChatResponse(
     List<Choice> choices
 ) {
 
