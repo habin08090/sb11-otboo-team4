@@ -17,6 +17,9 @@ public class LlmExtractionParser {
   }
 
   public LlmExtractedClothesInfo parse(LlmExtractionResponse response) {
+    if (response == null || response.choices() == null || response.choices().isEmpty()) {
+      throw LlmApiException.parseFailed();
+    }
     String content = response.getContent();
     if (content == null || content.isBlank()) {
       throw LlmApiException.parseFailed();
