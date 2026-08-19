@@ -60,11 +60,11 @@ class RecommendationServiceTest {
     Weather w = Weather.create(
         null, null, null,
         skyStatus, precipitationType, 0, 0,
-        0, 0,
-        temperature, 0, temperature - 3, temperature + 3,
+        0, 0.0,
+        temperature, 0.0, temperature - 3, temperature + 3,
         windStrength == WindStrength.STRONG ? 15.0 : 3.0,
         windStrength
-    );
+    , null, null, null, null);
     ReflectionTestUtils.setField(w, "id", UUID.randomUUID());
     return w;
   }

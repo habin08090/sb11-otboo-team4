@@ -1,5 +1,9 @@
 package com.sprint.mission.otboo.security.usersession.properties;
 
+import com.sprint.mission.otboo.security.usersession.properties.enums.ConcurrentPolicyType;
+import com.sprint.mission.otboo.security.usersession.properties.enums.ExpirationPolicyType;
+import com.sprint.mission.otboo.security.usersession.properties.enums.UserSessionRegistryType;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.Duration;
@@ -11,12 +15,37 @@ import org.springframework.validation.annotation.Validated;
 @ConfigurationProperties(prefix = "otboo.security.user-session")
 public record UserSessionProperties(
 
-    @NotNull
-    @DurationMin(seconds = 1)
+    @NotNull(message = "userSessionExpiration은 필수 값입니다.")
+    @DurationMin(seconds = 1, message = "userSessionExpiration은 최소 1초 이상이어야 합니다.")
     Duration userSessionExpiration,
 
-    @Positive
-    Integer maxDevice
+    @Positive(message = "maxDevices는 0보다 커야 합니다.")
+    Integer maxDevices,
+
+    ExpirationPolicyType expirationPolicy,
+
+    ConcurrentPolicyType concurrentPolicy,
+
+    UserSessionRegistryType impl
 ) {
 
+  public UserSessionProperties {
+    if (expirationPolicy == null) {
+      expirationPolicy = ExpirationPolicyType.ABSOLUTE;
+    }
+    if (concurrentPolicy == null) {
+      concurrentPolicy = ConcurrentPolicyType.MULTI;
+    }
+    if (impl == null) {
+      impl = UserSessionRegistryType.REDIS;
+    }
+  }
+
+  @AssertTrue(message = "concurrentPolicy가 max이면 maxDevices가 필수입니다.")
+  private boolean isMaxDevicesValid() {
+    if (concurrentPolicy != ConcurrentPolicyType.MAX) {
+      return true;
+    }
+    return maxDevices != null && maxDevices > 0;
+  }
 }

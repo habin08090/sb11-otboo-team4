@@ -13,36 +13,39 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 @ConfigurationProperties(prefix = "otboo.file")
 public record FileProperties(
-    @NotBlank String impl,
-    @NotBlank String publicBaseUrl,
-    @Positive long maxSizeBytes,
-    @NotEmpty Set<String> allowedExtensions,
+    FileImplType impl,
+    @NotBlank(message = "publicBaseUrl은 필수 값입니다.") String publicBaseUrl,
+    @Positive(message = "maxSizeBytes는 0보다 커야 합니다.") long maxSizeBytes,
+    @NotEmpty(message = "allowedExtensions는 최소 1개 이상이어야 합니다.") Set<String> allowedExtensions,
     @Valid Local local,
     @Valid S3 s3
 ) {
 
   public FileProperties {
     if (impl == null) {
-      impl = "local";
+      impl = FileImplType.LOCAL;
     }
   }
 
   @AssertTrue(message = "impl이 local이면 local.upload-dir이, s3면 s3.bucket과 s3.region이 필요합니다.")
   private boolean isModeConfigValid() {
-    if ("local".equals(impl)) {
+    if (impl == FileImplType.LOCAL) {
       return local != null && StringUtils.hasText(local.uploadDir());
     }
-    if ("s3".equals(impl)) {
+    if (impl == FileImplType.S3) {
       return s3 != null && StringUtils.hasText(s3.bucket()) && StringUtils.hasText(s3.region());
     }
     return true;
   }
 
-  public record Local(@NotBlank String uploadDir) {
+  public record Local(@NotBlank(message = "uploadDir은 필수 값입니다.") String uploadDir) {
 
   }
 
-  public record S3(@NotBlank String bucket, @NotBlank String region) {
+  public record S3(
+      @NotBlank(message = "bucket은 필수 값입니다.") String bucket,
+      @NotBlank(message = "region은 필수 값입니다.") String region
+  ) {
 
   }
 }

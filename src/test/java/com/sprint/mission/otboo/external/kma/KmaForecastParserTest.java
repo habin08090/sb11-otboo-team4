@@ -2,23 +2,32 @@ package com.sprint.mission.otboo.external.kma;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.navercorp.fixturemonkey.FixtureMonkey;
 import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.SkyStatus;
-import com.sprint.mission.otboo.external.kma.dto.DailyWeatherForecastDto;
 import com.sprint.mission.otboo.external.kma.dto.KmaWeatherResponse;
 import com.sprint.mission.otboo.external.kma.dto.KmaWeatherResponse.Body;
 import com.sprint.mission.otboo.external.kma.dto.KmaWeatherResponse.Header;
 import com.sprint.mission.otboo.external.kma.dto.KmaWeatherResponse.Item;
 import com.sprint.mission.otboo.external.kma.dto.KmaWeatherResponse.Items;
 import com.sprint.mission.otboo.external.kma.dto.KmaWeatherResponse.Response;
+import com.sprint.mission.otboo.external.kma.dto.WeatherForecastSlotDto;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 class KmaForecastParserTest {
 
@@ -28,161 +37,220 @@ class KmaForecastParserTest {
 
   private final KmaForecastParser parser = new KmaForecastParser();
 
+  private ListAppender<ILoggingEvent> appender;
+  private Logger logger;
+
+  @BeforeEach
+  void setUpLogger() {
+    logger = (Logger) LoggerFactory.getLogger(KmaForecastParser.class);
+    appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+  }
+
+  @AfterEach
+  void tearDownLogger() {
+    logger.detachAppender(appender);
+    appender.stop();
+  }
+
   @Nested
-  @DisplayName("ParseDailyForecast")
-  class ParseDailyForecast {
+  @DisplayName("ParseSlotForecast")
+  class ParseSlotForecast {
 
     @Test
-    @DisplayName("미래_날짜의_하루치_데이터가_주어지면_대표시각_1500_기준으로_집계된다")
-    void 미래_날짜의_하루치_데이터가_주어지면_대표시각_1500_기준으로_집계된다() {
-      // given
-      Instant now = Instant.parse("2026-07-27T08:00:00Z");
-      List<Item> items = List.of(
-          item("TMP", "20260729", "0000", "24"),
-          item("TMP", "20260729", "0300", "23"),
-          item("TMP", "20260729", "0600", "24"),
-          item("TMP", "20260729", "0900", "27"),
-          item("TMP", "20260729", "1200", "30"),
-          item("TMP", "20260729", "1500", "32"),
-          item("TMP", "20260729", "1800", "29"),
-          item("TMP", "20260729", "2100", "26"),
-          item("SKY", "20260729", "1500", "1"),
-          item("PTY", "20260729", "0000", "0"),
-          item("PTY", "20260729", "1500", "0"),
-          item("POP", "20260729", "0000", "10"),
-          item("POP", "20260729", "0900", "30"),
-          item("POP", "20260729", "1500", "10"),
-          item("PCP", "20260729", "0000", "강수없음"),
-          item("PCP", "20260729", "1500", "강수없음"),
-          item("REH", "20260729", "1500", "55"),
-          item("WSD", "20260729", "1500", "3.0")
-      );
+    @DisplayName("근접일_1시간_간격_24개_슬롯_응답이_슬롯마다_1개씩_24개_DTO로_분해된다")
+    void 근접일_1시간_간격_24개_슬롯_응답이_슬롯마다_1개씩_24개_DTO로_분해된다() {
+      // given - 0시~23시 매시 TMP, 0시 슬롯에만 다른 카테고리도 함께 포함
+      List<Item> items = new ArrayList<>();
+      for (int hour = 0; hour < 24; hour++) {
+        items.add(item("TMP", "20260729", "%02d00".formatted(hour), String.valueOf(15 + hour)));
+      }
+      items.add(item("SKY", "20260729", "0000", "1"));
+      items.add(item("PTY", "20260729", "0000", "1"));
+      items.add(item("POP", "20260729", "0000", "60"));
+      items.add(item("PCP", "20260729", "0000", "5.0mm"));
+      items.add(item("REH", "20260729", "0000", "70"));
+      items.add(item("WSD", "20260729", "0000", "4.0"));
       KmaWeatherResponse response = responseOf(items);
 
       // when
-      List<DailyWeatherForecastDto> result = parser.parseDailyForecast(response, now);
+      List<WeatherForecastSlotDto> result = parser.parseSlotForecast(response);
 
       // then
-      assertThat(result).hasSize(1);
-      DailyWeatherForecastDto dto = result.get(0);
-      assertThat(dto.date()).isEqualTo(LocalDate.of(2026, 7, 29));
-      assertThat(dto.skyStatus()).isEqualTo(SkyStatus.CLEAR);
-      assertThat(dto.precipitationType()).isEqualTo(PrecipitationType.NONE);
-      assertThat(dto.precipitationAmount()).isEqualTo(0.0);
-      assertThat(dto.precipitationProbability()).isEqualTo(30.0);
-      assertThat(dto.humidityCurrent()).isEqualTo(55.0);
-      assertThat(dto.temperatureCurrent()).isEqualTo(32.0);
-      assertThat(dto.temperatureMin()).isEqualTo(23.0);
-      assertThat(dto.temperatureMax()).isEqualTo(32.0);
-      assertThat(dto.windSpeed()).isEqualTo(3.0);
+      assertThat(result).hasSize(24);
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureMin).containsOnly(15.0);
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureMax).containsOnly(38.0);
+
+      ZoneId kst = ZoneId.of("Asia/Seoul");
+      LocalDate date = LocalDate.of(2026, 7, 29);
+      WeatherForecastSlotDto hour0 = result.stream()
+          .filter(dto -> dto.slotAt().equals(date.atTime(0, 0).atZone(kst).toInstant()))
+          .findFirst().orElseThrow();
+      assertThat(hour0.temperatureCurrent()).isEqualTo(15.0);
+      assertThat(hour0.skyStatus()).isEqualTo(SkyStatus.CLEAR);
+      assertThat(hour0.precipitationType()).isEqualTo(PrecipitationType.RAIN);
+      assertThat(hour0.precipitationProbability()).isEqualTo(60.0);
+      assertThat(hour0.precipitationAmount()).isEqualTo(5.0);
+      assertThat(hour0.humidityCurrent()).isEqualTo(70.0);
+      assertThat(hour0.windSpeed()).isEqualTo(4.0);
+
+      WeatherForecastSlotDto hour1 = result.stream()
+          .filter(dto -> dto.slotAt().equals(date.atTime(1, 0).atZone(kst).toInstant()))
+          .findFirst().orElseThrow();
+      assertThat(hour1.temperatureCurrent()).isEqualTo(16.0);
+      assertThat(hour1.skyStatus()).isEqualTo(SkyStatus.CLEAR);
+      assertThat(hour1.precipitationType()).isEqualTo(PrecipitationType.NONE);
+      assertThat(hour1.precipitationProbability()).isEqualTo(0.0);
+      assertThat(hour1.precipitationAmount()).isEqualTo(0.0);
+      assertThat(hour1.humidityCurrent()).isEqualTo(0.0);
+      assertThat(hour1.windSpeed()).isEqualTo(0.0);
     }
 
     @Test
-    @DisplayName("오늘_날짜는_지금_시각과_가장_가까운_슬롯_값을_current로_사용한다")
-    void 오늘_날짜는_지금_시각과_가장_가까운_슬롯_값을_current로_사용한다() {
-      // given - now: 2026-07-27 20:00 KST
-      Instant now = Instant.parse("2026-07-27T11:00:00Z");
-      List<Item> items = List.of(
-          item("TMP", "20260727", "1800", "31"),
-          item("TMP", "20260727", "1900", "30"),
-          item("TMP", "20260727", "2000", "28"),
-          item("TMP", "20260727", "2100", "27")
-      );
+    @DisplayName("근접일 이후는_3시간_간격_8개_슬롯_응답이_슬롯마다_1개씩_8개_DTO로_분해된다")
+    void 근접일_이후는_3시간_간격_8개_슬롯_응답이_슬롯마다_1개씩_8개_DTO로_분해된다() {
+      // given - 0시부터 3시간 간격 8슬롯(근접일 이후 그리드)
+      List<Item> items = new ArrayList<>();
+      String[] slotTimes = {"0000", "0300", "0600", "0900", "1200", "1500", "1800", "2100"};
+      double[] temps = {18, 17, 19, 23, 27, 28, 25, 21};
+      for (int i = 0; i < slotTimes.length; i++) {
+        items.add(item("TMP", "20260801", slotTimes[i], String.valueOf(temps[i])));
+      }
       KmaWeatherResponse response = responseOf(items);
 
       // when
-      List<DailyWeatherForecastDto> result = parser.parseDailyForecast(response, now);
+      List<WeatherForecastSlotDto> result = parser.parseSlotForecast(response);
 
       // then
-      assertThat(result).hasSize(1);
-      assertThat(result.get(0).temperatureCurrent()).isEqualTo(28.0);
+      assertThat(result).hasSize(8);
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureMin).containsOnly(17.0);
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureMax).containsOnly(28.0);
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureCurrent)
+          .containsExactlyInAnyOrder(18.0, 17.0, 19.0, 23.0, 27.0, 28.0, 25.0, 21.0);
     }
 
     @Test
-    @DisplayName("PCP_텍스트_표현을_파싱해서_하루_합계로_집계한다")
-    void PCP_텍스트_표현을_파싱해서_하루_합계로_집계한다() {
-      // given
-      Instant now = Instant.parse("2026-07-27T08:00:00Z");
+    @DisplayName("TMP가_없는_슬롯은_다른_슬롯이_충분해도_결과에서_제외된다")
+    void TMP가_없는_슬롯은_다른_슬롯이_충분해도_결과에서_제외된다() {
+      // given - TMP는 4개 슬롯뿐이라 날짜 게이트는 통과하지만, 0600엔 SKY만 있고 TMP가 없다
       List<Item> items = List.of(
-          item("TMP", "20260730", "1500", "28"),
-          item("PCP", "20260730", "0600", "1.0mm"),
-          item("PCP", "20260730", "0900", "강수없음"),
-          item("PCP", "20260730", "1200", "1mm 미만"),
-          item("PCP", "20260730", "1500", "30.0~50.0mm")
+          item("TMP", "20260802", "0000", "18"),
+          item("TMP", "20260802", "0300", "17"),
+          item("TMP", "20260802", "0900", "23"),
+          item("TMP", "20260802", "1200", "27"),
+          item("SKY", "20260802", "0600", "1")
       );
       KmaWeatherResponse response = responseOf(items);
 
       // when
-      List<DailyWeatherForecastDto> result = parser.parseDailyForecast(response, now);
+      List<WeatherForecastSlotDto> result = parser.parseSlotForecast(response);
 
       // then
-      assertThat(result).hasSize(1);
-      assertThat(result.get(0).precipitationAmount()).isEqualTo(31.9);
+      assertThat(result).hasSize(4);
+      assertThat(result).extracting(WeatherForecastSlotDto::slotAt)
+          .noneMatch(slotAt -> slotAt.equals(
+              LocalDate.of(2026, 8, 2).atTime(6, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant()));
     }
 
     @Test
-    @DisplayName("대표시각에_강수가_없어도_다른_시각에_강수가_있으면_그_타입을_채택한다")
-    void 대표시각에_강수가_없어도_다른_시각에_강수가_있으면_그_타입을_채택한다() {
-      // given
-      Instant now = Instant.parse("2026-07-27T08:00:00Z");
+    @DisplayName("TMN_TMX가_있으면_TMP_극값_대신_그_값을_일_기온_범위로_쓴다")
+    void TMN_TMX가_있으면_TMP_극값_대신_그_값을_일_기온_범위로_쓴다() {
+      // given - TMP 극값(17.0~19.0)과 다른 TMN(10.0)/TMX(25.0)
       List<Item> items = List.of(
-          item("TMP", "20260730", "1500", "28"),
-          item("PTY", "20260730", "0000", "0"),
-          item("PTY", "20260730", "0900", "1"),
-          item("PTY", "20260730", "1200", "0"),
-          item("PTY", "20260730", "1500", "0")
+          item("TMP", "20260803", "0000", "17.0"),
+          item("TMP", "20260803", "0300", "18.0"),
+          item("TMP", "20260803", "0600", "19.0"),
+          item("TMP", "20260803", "0900", "18.5"),
+          item("TMN", "20260803", "0600", "10.0"),
+          item("TMX", "20260803", "1500", "25.0")
       );
       KmaWeatherResponse response = responseOf(items);
 
       // when
-      List<DailyWeatherForecastDto> result = parser.parseDailyForecast(response, now);
+      List<WeatherForecastSlotDto> result = parser.parseSlotForecast(response);
 
       // then
-      assertThat(result).hasSize(1);
-      assertThat(result.get(0).precipitationType()).isEqualTo(PrecipitationType.RAIN);
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureMin).containsOnly(10.0);
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureMax).containsOnly(25.0);
     }
 
     @Test
-    @DisplayName("슬롯이_1개뿐인_응답_창_끝단_날짜는_결과에서_제외된다")
-    void 슬롯이_1개뿐인_응답_창_끝단_날짜는_결과에서_제외된다() {
+    @DisplayName("TMN_TMX가_없으면_TMP_극값으로_대체한다")
+    void TMN_TMX가_없으면_TMP_극값으로_대체한다() {
       // given
-      Instant now = Instant.parse("2026-07-27T08:00:00Z");
       List<Item> items = List.of(
-          item("TMP", "20260729", "0000", "24"),
-          item("TMP", "20260729", "0300", "23"),
-          item("TMP", "20260729", "0600", "24"),
-          item("TMP", "20260729", "0900", "27"),
-          // 응답 창 끝단 - 슬롯 1개뿐인 부실한 날짜
-          item("TMP", "20260801", "0000", "26")
+          item("TMP", "20260803", "0000", "17.0"),
+          item("TMP", "20260803", "0300", "18.0"),
+          item("TMP", "20260803", "0600", "19.0"),
+          item("TMP", "20260803", "0900", "18.5")
       );
       KmaWeatherResponse response = responseOf(items);
 
       // when
-      List<DailyWeatherForecastDto> result = parser.parseDailyForecast(response, now);
+      List<WeatherForecastSlotDto> result = parser.parseSlotForecast(response);
 
       // then
-      assertThat(result).hasSize(1);
-      assertThat(result.get(0).date()).isEqualTo(LocalDate.of(2026, 7, 29));
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureMin).containsOnly(17.0);
+      assertThat(result).extracting(WeatherForecastSlotDto::temperatureMax).containsOnly(19.0);
     }
 
     @Test
-    @DisplayName("TMP_데이터가_없는_날짜는_슬롯_수가_충분해도_결과에서_제외된다")
-    void TMP_데이터가_없는_날짜는_슬롯_수가_충분해도_결과에서_제외된다() {
+    @DisplayName("SKY_미상_코드는_CLEAR로_대체하고_경고_로그를_남긴다")
+    void SKY_미상_코드는_CLEAR로_대체하고_경고_로그를_남긴다() {
       // given
-      Instant now = Instant.parse("2026-07-27T08:00:00Z");
       List<Item> items = List.of(
-          item("PCP", "20260730", "0000", "강수없음"),
-          item("PCP", "20260730", "0900", "강수없음"),
-          item("PCP", "20260730", "1200", "강수없음"),
-          item("PCP", "20260730", "1500", "강수없음")
+          item("TMP", "20260803", "0000", "17.0"),
+          item("TMP", "20260803", "0300", "18.0"),
+          item("TMP", "20260803", "0600", "19.0"),
+          item("TMP", "20260803", "0900", "18.5"),
+          item("SKY", "20260803", "0000", "9")
       );
       KmaWeatherResponse response = responseOf(items);
 
       // when
-      List<DailyWeatherForecastDto> result = parser.parseDailyForecast(response, now);
+      List<WeatherForecastSlotDto> result = parser.parseSlotForecast(response);
 
       // then
-      assertThat(result).isEmpty();
+      Instant slotAt0000 = LocalDate.of(2026, 8, 3).atStartOfDay(ZoneId.of("Asia/Seoul"))
+          .toInstant();
+      WeatherForecastSlotDto slot0000 = result.stream()
+          .filter(dto -> dto.slotAt().equals(slotAt0000)).findFirst().orElseThrow();
+      assertThat(slot0000.skyStatus()).isEqualTo(SkyStatus.CLEAR);
+      assertThat(appender.list)
+          .anySatisfy(logEvent -> {
+            assertThat(logEvent.getLevel()).isEqualTo(Level.WARN);
+            assertThat(logEvent.getFormattedMessage()).contains("SKY").contains("9");
+          });
+    }
+
+    @Test
+    @DisplayName("PTY_미상_코드는_NONE으로_대체하고_경고_로그를_남긴다")
+    void PTY_미상_코드는_NONE으로_대체하고_경고_로그를_남긴다() {
+      // given
+      List<Item> items = List.of(
+          item("TMP", "20260803", "0000", "17.0"),
+          item("TMP", "20260803", "0300", "18.0"),
+          item("TMP", "20260803", "0600", "19.0"),
+          item("TMP", "20260803", "0900", "18.5"),
+          item("PTY", "20260803", "0000", "9")
+      );
+      KmaWeatherResponse response = responseOf(items);
+
+      // when
+      List<WeatherForecastSlotDto> result = parser.parseSlotForecast(response);
+
+      // then
+      Instant slotAt0000 = LocalDate.of(2026, 8, 3).atStartOfDay(ZoneId.of("Asia/Seoul"))
+          .toInstant();
+      WeatherForecastSlotDto slot0000 = result.stream()
+          .filter(dto -> dto.slotAt().equals(slotAt0000)).findFirst().orElseThrow();
+      assertThat(slot0000.precipitationType()).isEqualTo(PrecipitationType.NONE);
+      assertThat(appender.list)
+          .anySatisfy(logEvent -> {
+            assertThat(logEvent.getLevel()).isEqualTo(Level.WARN);
+            assertThat(logEvent.getFormattedMessage()).contains("PTY").contains("9");
+          });
     }
   }
 

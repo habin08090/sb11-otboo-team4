@@ -1,13 +1,9 @@
 package com.sprint.mission.otboo.domain.weathernotification.weather.service;
 
 import com.sprint.mission.otboo.batch.weatherfetch.config.WeatherChangeProperties;
-import com.sprint.mission.otboo.domain.weathernotification.weather.entity.Weather;
-import com.sprint.mission.otboo.domain.weathernotification.weather.entity.WeatherGrid;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -16,37 +12,46 @@ import org.springframework.stereotype.Component;
 @Component
 public class WeatherChangeEvaluator {
 
+  // 기상청 관측값은 소수 1자리라 비교 정밀도를 데이터에 맞춘다 - double 뺄셈 그대로 비교하면
+  // "정확히 3.0도 차이"인 1.1→4.1 같은 값이 2.9999999999999996으로 미감지된다(PR #131 리뷰).
+  private static final double SCALE = 10.0;
+
   private final WeatherChangeProperties properties;
 
-  public Optional<ChangeResult> evaluate(Weather previous, Weather latest) {
+  public Optional<ChangeResult> evaluate(WeatherChangeSnapshot previous,
+      WeatherChangeSnapshot latest) {
     List<String> reasons = new ArrayList<>();
 
-    double temperatureDelta = latest.getTemperatureCurrent() - previous.getTemperatureCurrent();
+    double temperatureDelta = normalize(latest.temperatureCurrent()
+        - previous.temperatureCurrent());
     if (Math.abs(temperatureDelta) >= properties.temperatureThreshold()) {
       reasons.add(temperatureMessage(temperatureDelta));
     }
 
     // 값 자체가 바뀌었는지만 본다 - NONE↔RAIN/SNOW/RAIN_SNOW뿐 아니라 RAIN↔SNOW 같은
     // 전환도 이걸로 잡힌다.
-    if (previous.getPrecipitationType() != latest.getPrecipitationType()) {
+    if (previous.precipitationType() != latest.precipitationType()) {
       reasons.add(
-          precipitationTypeMessage(previous.getPrecipitationType(), latest.getPrecipitationType()));
+          precipitationTypeMessage(previous.precipitationType(), latest.precipitationType()));
     }
 
-    double probabilityDelta =
-        latest.getPrecipitationProbability() - previous.getPrecipitationProbability();
+    double probabilityDelta = normalize(latest.precipitationProbability()
+        - previous.precipitationProbability());
     if (Math.abs(probabilityDelta) >= properties.precipitationProbabilityThreshold()) {
       reasons.add(precipitationProbabilityMessage(probabilityDelta));
     }
 
-    double amountDelta = latest.getPrecipitationAmount() - previous.getPrecipitationAmount();
+    double amountDelta = normalize(latest.precipitationAmount()
+        - previous.precipitationAmount());
     if (Math.abs(amountDelta) >= properties.precipitationAmountThreshold()) {
       reasons.add(precipitationAmountMessage(amountDelta));
     }
 
-    return reasons.isEmpty() ? Optional.empty()
-        : Optional.of(new ChangeResult(latest.getWeatherGrid(), latest.getForecastAt(),
-            latest.getForecastedAt(), reasons));
+    return reasons.isEmpty() ? Optional.empty() : Optional.of(new ChangeResult(reasons));
+  }
+
+  private double normalize(double delta) {
+    return Math.round(delta * SCALE) / SCALE;
   }
 
   private String temperatureMessage(double delta) {
@@ -69,8 +74,14 @@ public class WeatherChangeEvaluator {
     return "강수량이 %.1fmm %s어요.".formatted(Math.abs(delta), delta > 0 ? "늘었" : "줄었");
   }
 
-  public record ChangeResult(WeatherGrid weatherGrid, Instant forecastAt,
-      Instant latestForecastedAt, List<String> reasons) {
+  public record ChangeResult(List<String> reasons) {
 
+    // "reasons → 최종 문구" 조립 책임을 이 레코드로 모은다 - 이전엔 배치 패키지의
+    // WeatherSuddenChangeChunkProcessor가 지역명 접두어를 붙여 content를 완성했는데, 문구를
+    // 바꾸려면 두 파일을 열어야 했다(PR #131 리뷰). regionPrefix는 호출부가 위치 도메인
+    // 지식(locationNames 그룹핑)으로 만들어 넘긴다 - 이 레코드는 위치를 모른다.
+    public String content(String regionPrefix) {
+      return regionPrefix + String.join(" ", reasons);
+    }
   }
 }
