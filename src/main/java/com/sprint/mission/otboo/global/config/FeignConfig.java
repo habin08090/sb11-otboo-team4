@@ -1,11 +1,10 @@
 package com.sprint.mission.otboo.global.config;
 
-import com.sprint.mission.otboo.external.llm.LlmProperties;
+
 import feign.Request;
 import feign.Retryer;
 import feign.codec.ErrorDecoder;
 import java.time.Duration;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,7 +13,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Configuration
 @EnableFeignClients(basePackages = "com.sprint.mission.otboo.external")
-@EnableConfigurationProperties(LlmProperties.class)
 public class FeignConfig {
 
   @Primary
