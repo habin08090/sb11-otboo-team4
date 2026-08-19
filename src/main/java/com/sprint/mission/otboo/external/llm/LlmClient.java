@@ -6,7 +6,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
-@FeignClient(name = "llmClient", url = "${external.llm.base-url}", configuration = LlmFeignConfig.class)
+@FeignClient(name = "llmClient", url = "${external.llm.base-url:https://openrouter.ai/api/v1}", configuration = LlmFeignConfig.class)
 public interface LlmClient {
 
   @PostMapping("/chat/completions")
