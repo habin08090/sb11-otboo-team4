@@ -1,6 +1,5 @@
 package com.sprint.mission.otboo.global.config;
 
-
 import feign.Request;
 import feign.Retryer;
 import feign.codec.ErrorDecoder;
@@ -8,14 +7,11 @@ import java.time.Duration;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Configuration
 @EnableFeignClients(basePackages = "com.sprint.mission.otboo.external")
 public class FeignConfig {
 
-  @Primary
   @Bean
   public Request.Options feignRequestOptions() {
     return new Request.Options(
@@ -25,7 +21,6 @@ public class FeignConfig {
     );
   }
 
-  @Primary
   @Bean
   public Retryer feignRetryer() {
     return new Retryer.Default(100, 1000, 3);
@@ -34,10 +29,5 @@ public class FeignConfig {
   @Bean
   public ErrorDecoder feignErrorDecoder() {
     return new FeignErrorDecoder();
-  }
-
-  @Bean
-  public ObjectMapper objectMapper() {
-    return new ObjectMapper();
   }
 }
