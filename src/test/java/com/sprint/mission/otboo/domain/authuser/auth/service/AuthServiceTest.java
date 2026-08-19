@@ -24,8 +24,7 @@ import com.sprint.mission.otboo.domain.authuser.user.entity.enums.LockReason;
 import com.sprint.mission.otboo.domain.authuser.user.entity.enums.Role;
 import com.sprint.mission.otboo.domain.authuser.user.exception.UserNotFoundException;
 import com.sprint.mission.otboo.domain.authuser.user.repository.UserRepository;
-import com.sprint.mission.otboo.domain.weathernotification.sse.service.SseService;
-import com.sprint.mission.otboo.global.temppassword.generator.TempPasswordGenerator;
+import com.sprint.mission.otboo.domain.weathernotification.sse.event.UserSignedInEvent;
 import com.sprint.mission.otboo.global.temppassword.registry.TempPasswordRegistry;
 import com.sprint.mission.otboo.security.details.CustomUserDetails;
 import com.sprint.mission.otboo.security.token.dto.RefreshTokenClaims;
@@ -76,12 +75,6 @@ class AuthServiceTest {
 
   @Mock
   private UserRepository userRepository;
-
-  @Mock
-  private SseService sseService;
-
-  @Mock
-  private TempPasswordGenerator tempPasswordGenerator;
 
   @Mock
   private TempPasswordRegistry tempPasswordRegistry;
@@ -185,8 +178,8 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("로그인에 성공하면 기존 SSE 연결을 강제 종료한다")
-    void 로그인에_성공하면_기존_SSE_연결을_강제_종료한다() {
+    @DisplayName("로그인에 성공하면 UserSignedInEvent를 발행한다")
+    void 로그인에_성공하면_UserSignedInEvent를_발행한다() {
       // given
       UUID userId = UUID.randomUUID();
       UserDto userDto = userDtoOf(userId, Role.USER);
@@ -201,7 +194,7 @@ class AuthServiceTest {
       authService.signIn(request);
 
       // then
-      verify(sseService).disconnectAll(userId);
+      verify(eventPublisher).publishEvent(new UserSignedInEvent(userId));
     }
 
     @Test
@@ -236,12 +229,13 @@ class AuthServiceTest {
   class ResetPassword {
 
     @Test
-    @DisplayName("가입된 이메일이면 임시 비밀번호를 생성해 저장하고 이벤트를 발행한다")
-    void 가입된_이메일이면_임시_비밀번호를_생성해_저장하고_이벤트를_발행한다() {
+    @DisplayName("가입된 이메일이면 임시 비밀번호를 발급하고 이벤트를 발행한다")
+    void 가입된_이메일이면_임시_비밀번호를_발급하고_이벤트를_발행한다() {
       // given
       User user = User.create("홍길동", "hong@test.com", "encoded-password");
       given(userRepository.findByEmail("hong@test.com")).willReturn(Optional.of(user));
-      given(tempPasswordGenerator.generate()).willReturn("temp-password!");
+      given(tempPasswordRegistry.issue(user.getId())).willReturn("temp-password!");
+      given(tempPasswordRegistry.getExpirationMinutes()).willReturn(3);
 
       ResetPasswordRequest request = new ResetPasswordRequest("hong@test.com");
 
@@ -249,23 +243,22 @@ class AuthServiceTest {
       authService.resetPassword(request);
 
       // then
-      verify(tempPasswordRegistry).save(user.getId(), "temp-password!");
+      verify(tempPasswordRegistry).issue(user.getId());
       verify(eventPublisher).publishEvent(
-          new TempPasswordRequestedEvent("hong@test.com", "temp-password!"));
+          new TempPasswordRequestedEvent("hong@test.com", "temp-password!", 3));
     }
 
     @Test
-    @DisplayName("가입되지 않은 이메일이면 아무 것도 하지 않는다")
-    void 가입되지_않은_이메일이면_아무_것도_하지_않는다() {
+    @DisplayName("가입되지 않은 이메일이면 예외가 발생한다")
+    void 가입되지_않은_이메일이면_예외가_발생한다() {
       // given
       given(userRepository.findByEmail("unknown@test.com")).willReturn(Optional.empty());
       ResetPasswordRequest request = new ResetPasswordRequest("unknown@test.com");
 
-      // when
-      authService.resetPassword(request);
-
-      // then
-      verify(tempPasswordRegistry, never()).save(any(), any());
+      // when & then
+      assertThatThrownBy(() -> authService.resetPassword(request))
+          .isInstanceOf(UserNotFoundException.class);
+      verify(tempPasswordRegistry, never()).issue(any());
       verify(eventPublisher, never()).publishEvent(any());
     }
   }
