@@ -195,5 +195,24 @@ class ClothesControllerTest {
               .with(csrf()))
           .andExpect(status().isBadRequest());
     }
+    @Test
+    @DisplayName("허용되지 않은 호스트이면 400을 반환한다")
+    void 허용되지_않은_호스트이면_400을_반환한다() throws Exception {
+      // when & then
+      mockMvc.perform(get("/api/clothes/extractions")
+              .param("url", "https://evil.com/products/12345")
+              .with(csrf()))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("https가 아니면 400을 반환한다")
+    void https가_아니면_400을_반환한다() throws Exception {
+      // when & then
+      mockMvc.perform(get("/api/clothes/extractions")
+              .param("url", "http://www.musinsa.com/products/12345")
+              .with(csrf()))
+          .andExpect(status().isBadRequest());
+    }
   }
 }
