@@ -1,5 +1,7 @@
 package com.sprint.mission.otboo.domain.social.feed.dto;
 
+import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
+import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.SkyStatus;
 import com.sprint.mission.otboo.global.dto.SortDirection;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Max;
@@ -16,8 +18,8 @@ public record FeedListParams(
     @NotNull FeedSortBy sortBy,
     @NotNull SortDirection sortDirection,
     String keywordLike,
-    // TODO: 날씨 도메인 추가 후 필터 필드 복원
-    //   skyStatusEqual, precipitationTypeEqual — 스냅샷 컬럼 채움 후 유효
+    SkyStatus skyStatusEqual,
+    PrecipitationType precipitationTypeEqual,
     UUID authorIdEqual
 ) {
 

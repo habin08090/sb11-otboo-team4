@@ -23,6 +23,7 @@ import com.sprint.mission.otboo.domain.social.common.repository.querydsl.UserSum
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedCreateRequest;
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedDto;
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedListParams;
+import com.sprint.mission.otboo.domain.social.feed.dto.FeedSearchResult;
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedSortBy;
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedUpdateRequest;
 import com.sprint.mission.otboo.domain.social.feed.dto.OotdDto;
@@ -39,6 +40,7 @@ import com.sprint.mission.otboo.domain.social.feed.exception.WeatherNotFoundExce
 import com.sprint.mission.otboo.domain.social.feed.mapper.FeedMapper;
 import com.sprint.mission.otboo.domain.social.feed.repository.FeedLikeRepository;
 import com.sprint.mission.otboo.domain.social.feed.repository.FeedRepository;
+import com.sprint.mission.otboo.domain.social.feed.repository.elasticsearch.FeedSearchRepository;
 import com.sprint.mission.otboo.domain.social.follow.repository.FollowRepository;
 import com.sprint.mission.otboo.domain.weathernotification.weather.dto.PrecipitationDto;
 import com.sprint.mission.otboo.domain.weathernotification.weather.dto.TemperatureDto;
@@ -105,6 +107,9 @@ class FeedServiceTest {
   @Mock
   FollowRepository followRepository;
 
+  @Mock
+  FeedSearchRepository feedSearchRepository;
+
   private static void setFeedId(Feed feed, UUID id) {
     try {
       var field = Feed.class.getDeclaredField("id");
@@ -123,6 +128,11 @@ class FeedServiceTest {
     } catch (ReflectiveOperationException e) {
       throw new RuntimeException(e);
     }
+  }
+
+  private static FeedListParams params(int limit) {
+    return new FeedListParams(null, null, limit,
+        FeedSortBy.CREATED_AT, SortDirection.DESCENDING, null, null, null, null);
   }
 
   @Nested
@@ -482,34 +492,33 @@ class FeedServiceTest {
   class GetFeeds {
 
     @Test
-    @DisplayName("Repository가 준 페이지를 FeedDto로 변환해 반환한다")
-    void Repository가_준_페이지를_FeedDto로_변환해_반환한다() {
+    @DisplayName("검색 결과를 FeedDto로 변환해 반환한다")
+    void 검색_결과를_FeedDto로_변환해_반환한다() {
       // given
-      FeedListParams params = new FeedListParams(
-          null, null, 2,
-          FeedSortBy.CREATED_AT, SortDirection.DESCENDING,
-          null, null);
+      FeedListParams params = params(2);
 
       UUID authorId1 = UUID.randomUUID();
       UUID authorId2 = UUID.randomUUID();
       UserSummary summary1 = new UserSummary(authorId1, "유저1", "img1.png");
       UserSummary summary2 = new UserSummary(authorId2, "유저2", "img2.png");
 
+      UUID id1 = UUID.randomUUID();
+      UUID id2 = UUID.randomUUID();
       Feed feed1 = Feed.create(authorId1, UUID.randomUUID(), "피드1", DUMMY_SNAPSHOT, List.of());
       Feed feed2 = Feed.create(authorId2, UUID.randomUUID(), "피드2", DUMMY_SNAPSHOT, List.of());
+      setFeedId(feed1, id1);
+      setFeedId(feed2, id2);
 
-      CursorPageResponse<Feed> repoPage = new CursorPageResponse<>(
-          List.of(feed1, feed2), "커서값", feed2.getId(), true, 2L,
-          "createdAt", SortDirection.DESCENDING);
-      when(feedRepository.findFeeds(params)).thenReturn(repoPage);
+      given(feedSearchRepository.search(params)).willReturn(
+          new FeedSearchResult(List.of(id1, id2), 2L, "커서값", id2, true));
+      given(feedRepository.findAllActiveByIds(List.of(id1, id2)))
+          .willReturn(List.of(feed1, feed2));
       given(userSummaryQueryRepository.findByUserIds(anyList()))
           .willReturn(List.of(summary1, summary2));
       given(feedLikeRepository.findLikedFeedIds(any(), anyList())).willReturn(List.of());
 
-      FeedDto dto1 = new FeedDto(feed1.getId(), null, null, summary1, null, null, "피드1", 0L, 0,
-          false);
-      FeedDto dto2 = new FeedDto(feed2.getId(), null, null, summary2, null, null, "피드2", 0L, 0,
-          false);
+      FeedDto dto1 = new FeedDto(id1, null, null, summary1, null, null, "피드1", 0L, 0, false);
+      FeedDto dto2 = new FeedDto(id2, null, null, summary2, null, null, "피드2", 0L, 0, false);
       when(feedMapper.toDto(feed1, summary1, false)).thenReturn(dto1);
       when(feedMapper.toDto(feed2, summary2, false)).thenReturn(dto2);
 
@@ -520,38 +529,61 @@ class FeedServiceTest {
       assertThat(result.data()).containsExactly(dto1, dto2);
       assertThat(result.hasNext()).isTrue();
       assertThat(result.nextCursor()).isEqualTo("커서값");
-      assertThat(result.nextIdAfter()).isEqualTo(feed2.getId());
+      assertThat(result.nextIdAfter()).isEqualTo(id2);
     }
 
     @Test
-    @DisplayName("Repository가 마지막 페이지를 주면 hasNext false와 null 커서를 그대로 전달한다")
-    void Repository가_마지막_페이지를_주면_hasNext_false와_null_커서를_그대로_전달한다() {
+    @DisplayName("작성자를 조회할 수 없으면 AuthorNotFoundException을 던진다")
+    void 작성자를_조회할_수_없으면_AuthorNotFoundException을_던진다() {
       // given
-      FeedListParams params = new FeedListParams(
-          null, null, 5,
-          FeedSortBy.CREATED_AT, SortDirection.DESCENDING,
-          null, null);
+      UUID currentUserId = UUID.randomUUID();
+      UUID authorId = UUID.randomUUID();
+      UUID feedId = UUID.randomUUID();
+      Feed feed = Feed.create(authorId, UUID.randomUUID(), "내용", DUMMY_SNAPSHOT, List.of());
+      setFeedId(feed, feedId);
+
+      FeedListParams params = params(2);
+      given(feedSearchRepository.search(params)).willReturn(
+          new FeedSearchResult(List.of(feedId), 1L, null, null, false));
+      given(feedRepository.findAllActiveByIds(List.of(feedId))).willReturn(List.of(feed));
+
+      // author 조회 결과 없음
+      given(userSummaryQueryRepository.findByUserIds(List.of(authorId)))
+          .willReturn(List.of());
+
+      // when & then
+      assertThatThrownBy(() -> feedService.getFeeds(params, currentUserId))
+          .isInstanceOf(AuthorNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("마지막 페이지면 hasNext false와 null 커서를 그대로 전달한다")
+    void 마지막_페이지면_hasNext_false와_null_커서를_그대로_전달한다() {
+      // given
+      FeedListParams params = params(5);
 
       UUID authorId1 = UUID.randomUUID();
       UUID authorId2 = UUID.randomUUID();
       UserSummary summary1 = new UserSummary(authorId1, "유저1", "img1.png");
       UserSummary summary2 = new UserSummary(authorId2, "유저2", "img2.png");
 
+      UUID id1 = UUID.randomUUID();
+      UUID id2 = UUID.randomUUID();
       Feed feed1 = Feed.create(authorId1, UUID.randomUUID(), "피드1", DUMMY_SNAPSHOT, List.of());
       Feed feed2 = Feed.create(authorId2, UUID.randomUUID(), "피드2", DUMMY_SNAPSHOT, List.of());
+      setFeedId(feed1, id1);
+      setFeedId(feed2, id2);
 
-      CursorPageResponse<Feed> repoPage = new CursorPageResponse<>(
-          List.of(feed1, feed2), null, null, false, 2L,
-          "createdAt", SortDirection.DESCENDING);
-      when(feedRepository.findFeeds(params)).thenReturn(repoPage);
+      given(feedSearchRepository.search(params)).willReturn(
+          new FeedSearchResult(List.of(id1, id2), 2L, null, null, false));
+      given(feedRepository.findAllActiveByIds(List.of(id1, id2)))
+          .willReturn(List.of(feed1, feed2));
       given(userSummaryQueryRepository.findByUserIds(anyList()))
           .willReturn(List.of(summary1, summary2));
       given(feedLikeRepository.findLikedFeedIds(any(), anyList())).willReturn(List.of());
 
-      FeedDto dto1 = new FeedDto(feed1.getId(), null, null, summary1, null, null, "피드1", 0L, 0,
-          false);
-      FeedDto dto2 = new FeedDto(feed2.getId(), null, null, summary2, null, null, "피드2", 0L, 0,
-          false);
+      FeedDto dto1 = new FeedDto(id1, null, null, summary1, null, null, "피드1", 0L, 0, false);
+      FeedDto dto2 = new FeedDto(id2, null, null, summary2, null, null, "피드2", 0L, 0, false);
       when(feedMapper.toDto(feed1, summary1, false)).thenReturn(dto1);
       when(feedMapper.toDto(feed2, summary2, false)).thenReturn(dto2);
 
@@ -569,21 +601,21 @@ class FeedServiceTest {
     @DisplayName("여러 author를 findByUserIds 1회로 배치 조회하여 채운다")
     void 여러_author를_findByUserIds_1회로_배치_조회하여_채운다() {
       // given
-      FeedListParams params = new FeedListParams(
-          null, null, 2,
-          FeedSortBy.CREATED_AT, SortDirection.DESCENDING,
-          null, null);
-
+      FeedListParams params = params(2);
       UUID authorId1 = UUID.randomUUID();
       UUID authorId2 = UUID.randomUUID();
 
+      UUID id1 = UUID.randomUUID();
+      UUID id2 = UUID.randomUUID();
       Feed feed1 = Feed.create(authorId1, UUID.randomUUID(), "피드1", DUMMY_SNAPSHOT, List.of());
       Feed feed2 = Feed.create(authorId2, UUID.randomUUID(), "피드2", DUMMY_SNAPSHOT, List.of());
+      setFeedId(feed1, id1);
+      setFeedId(feed2, id2);
 
-      CursorPageResponse<Feed> repoPage = new CursorPageResponse<>(
-          List.of(feed1, feed2), null, null, false, 2L,
-          "createdAt", SortDirection.DESCENDING);
-      when(feedRepository.findFeeds(params)).thenReturn(repoPage);
+      given(feedSearchRepository.search(params)).willReturn(
+          new FeedSearchResult(List.of(id1, id2), 2L, null, null, false));
+      given(feedRepository.findAllActiveByIds(List.of(id1, id2)))
+          .willReturn(List.of(feed1, feed2));
 
       UserSummary summary1 = new UserSummary(authorId1, "유저1", "img1.png");
       UserSummary summary2 = new UserSummary(authorId2, "유저2", "img2.png");
@@ -591,10 +623,8 @@ class FeedServiceTest {
           .willReturn(List.of(summary1, summary2));
       given(feedLikeRepository.findLikedFeedIds(any(), anyList())).willReturn(List.of());
 
-      FeedDto dto1 = new FeedDto(feed1.getId(), null, null, summary1, null, null, "피드1", 0L, 0,
-          false);
-      FeedDto dto2 = new FeedDto(feed2.getId(), null, null, summary2, null, null, "피드2", 0L, 0,
-          false);
+      FeedDto dto1 = new FeedDto(id1, null, null, summary1, null, null, "피드1", 0L, 0, false);
+      FeedDto dto2 = new FeedDto(id2, null, null, summary2, null, null, "피드2", 0L, 0, false);
       when(feedMapper.toDto(feed1, summary1, false)).thenReturn(dto1);
       when(feedMapper.toDto(feed2, summary2, false)).thenReturn(dto2);
 
@@ -610,10 +640,8 @@ class FeedServiceTest {
     @DisplayName("내가 좋아요한 피드는 likedByMe=true로 반환한다")
     void 내가_좋아요한_피드는_likedByMe_true로_반환한다() {
       // given
+      FeedListParams params = params(2);
       UUID currentUserId = UUID.randomUUID();
-      FeedListParams params = new FeedListParams(
-          null, null, 2, FeedSortBy.CREATED_AT, SortDirection.DESCENDING, null, null);
-
       UUID authorId = UUID.randomUUID();
       UserSummary summary = new UserSummary(authorId, "유저", "img.png");
 
@@ -626,16 +654,16 @@ class FeedServiceTest {
       setFeedId(likedFeed, likedFeedId);
       setFeedId(notLikedFeed, notLikedFeedId);
 
-      CursorPageResponse<Feed> repoPage = new CursorPageResponse<>(
-          List.of(likedFeed, notLikedFeed), null, null, false, 2L,
-          "createdAt", SortDirection.DESCENDING);
+      given(feedSearchRepository.search(params)).willReturn(
+          new FeedSearchResult(List.of(likedFeedId, notLikedFeedId), 2L, null, null, false));
+      given(feedRepository.findAllActiveByIds(List.of(likedFeedId, notLikedFeedId)))
+          .willReturn(List.of(likedFeed, notLikedFeed));
 
       FeedDto likedDto = new FeedDto(likedFeedId, null, null, summary, null, null,
           "좋아요한 피드", 0L, 0, true);
       FeedDto notLikedDto = new FeedDto(notLikedFeedId, null, null, summary, null, null,
           "안 누른 피드", 0L, 0, false);
 
-      when(feedRepository.findFeeds(params)).thenReturn(repoPage);
       when(userSummaryQueryRepository.findByUserIds(anyList())).thenReturn(List.of(summary));
       when(feedLikeRepository.findLikedFeedIds(any(), anyList()))
           .thenReturn(List.of(likedFeedId));
@@ -650,28 +678,83 @@ class FeedServiceTest {
     }
 
     @Test
-    @DisplayName("작성자를 조회할 수 없으면 AuthorNotFoundException을 던진다")
-    void 작성자를_조회할_수_없으면_AuthorNotFoundException을_던진다() {
+    @DisplayName("ES가 반환한 순서대로 피드를 정렬해 반환한다")
+    void ES가_반환한_순서대로_피드를_정렬해_반환한다() {
       // given
       UUID currentUserId = UUID.randomUUID();
       UUID authorId = UUID.randomUUID();
-      Feed feed = Feed.create(authorId, UUID.randomUUID(), "내용", DUMMY_SNAPSHOT, List.of());
-      setFeedId(feed, UUID.randomUUID());
+      UserSummary summary = new UserSummary(authorId, "유저", "img.png");
 
-      CursorPageResponse<Feed> repoPage = new CursorPageResponse<>(
-          List.of(feed), null, null, false, 1L, "createdAt", SortDirection.DESCENDING);
-      FeedListParams params = new FeedListParams(
-          null, null, 2, FeedSortBy.CREATED_AT, SortDirection.DESCENDING, null, null);
+      UUID id1 = UUID.randomUUID();
+      UUID id2 = UUID.randomUUID();
+      UUID id3 = UUID.randomUUID();
+      Feed feed1 = Feed.create(authorId, UUID.randomUUID(), "피드1", DUMMY_SNAPSHOT, List.of());
+      Feed feed2 = Feed.create(authorId, UUID.randomUUID(), "피드2", DUMMY_SNAPSHOT, List.of());
+      Feed feed3 = Feed.create(authorId, UUID.randomUUID(), "피드3", DUMMY_SNAPSHOT, List.of());
+      setFeedId(feed1, id1);
+      setFeedId(feed2, id2);
+      setFeedId(feed3, id3);
 
-      given(feedRepository.findFeeds(params)).willReturn(repoPage);
+      FeedListParams params = params(10);
 
-      // author 조회 결과 null
-      given(userSummaryQueryRepository.findByUserIds(List.of(authorId)))
-          .willReturn(List.of());
+      // ES는 3 → 1 → 2 순으로 반환
+      given(feedSearchRepository.search(params)).willReturn(
+          new FeedSearchResult(List.of(id3, id1, id2), 3L, null, null, false));
+      // DB는 순서를 보장하지 않으므로 다른 순서로 반환
+      given(feedRepository.findAllActiveByIds(List.of(id3, id1, id2)))
+          .willReturn(List.of(feed1, feed2, feed3));
 
-      // when & then
-      assertThatThrownBy(() -> feedService.getFeeds(params, currentUserId))
-          .isInstanceOf(AuthorNotFoundException.class);
+      given(userSummaryQueryRepository.findByUserIds(anyList())).willReturn(List.of(summary));
+      given(feedLikeRepository.findLikedFeedIds(any(), anyList())).willReturn(List.of());
+
+      FeedDto dto1 = new FeedDto(id1, null, null, summary, null, null, "피드1", 0L, 0, false);
+      FeedDto dto2 = new FeedDto(id2, null, null, summary, null, null, "피드2", 0L, 0, false);
+      FeedDto dto3 = new FeedDto(id3, null, null, summary, null, null, "피드3", 0L, 0, false);
+      given(feedMapper.toDto(feed1, summary, false)).willReturn(dto1);
+      given(feedMapper.toDto(feed2, summary, false)).willReturn(dto2);
+      given(feedMapper.toDto(feed3, summary, false)).willReturn(dto3);
+
+      // when
+      CursorPageResponse<FeedDto> result = feedService.getFeeds(params, currentUserId);
+
+      // then
+      assertThat(result.data()).containsExactly(dto3, dto1, dto2);
+      assertThat(result.totalCount()).isEqualTo(3L);
+    }
+
+    @Test
+    @DisplayName("소프트 삭제된 피드는 목록에서 제외한다")
+    void 소프트_삭제된_피드는_목록에서_제외한다() {
+      // given
+      UUID currentUserId = UUID.randomUUID();
+      UUID authorId = UUID.randomUUID();
+      UserSummary summary = new UserSummary(authorId, "유저", "img.png");
+
+      UUID activeId = UUID.randomUUID();
+      UUID deletedId = UUID.randomUUID();
+      Feed activeFeed = Feed.create(authorId, UUID.randomUUID(), "살아있는 피드",
+          DUMMY_SNAPSHOT, List.of());
+      setFeedId(activeFeed, activeId);
+
+      FeedListParams params = params(10);
+
+      given(feedSearchRepository.search(params)).willReturn(
+          new FeedSearchResult(List.of(activeId, deletedId), 2L, null, null, false));
+      given(feedRepository.findAllActiveByIds(List.of(activeId, deletedId)))
+          .willReturn(List.of(activeFeed));
+
+      given(userSummaryQueryRepository.findByUserIds(anyList())).willReturn(List.of(summary));
+      given(feedLikeRepository.findLikedFeedIds(any(), anyList())).willReturn(List.of());
+
+      FeedDto activeDto = new FeedDto(activeId, null, null, summary, null, null,
+          "살아있는 피드", 0L, 0, false);
+      given(feedMapper.toDto(activeFeed, summary, false)).willReturn(activeDto);
+
+      // when
+      CursorPageResponse<FeedDto> result = feedService.getFeeds(params, currentUserId);
+
+      // then
+      assertThat(result.data()).containsExactly(activeDto);
     }
   }
 
@@ -820,6 +903,32 @@ class FeedServiceTest {
           .isInstanceOf(FeedNotFoundException.class);
       verify(eventPublisher, never()).publishEvent(any());
     }
+
+    @Test
+    @DisplayName("좋아요에 성공하면 검색 인덱싱 이벤트를 발행한다")
+    void 좋아요에_성공하면_검색_인덱싱_이벤트를_발행한다() {
+      // given
+      UUID feedId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+      given(feedRepository.existsByIdAndSoftDeletable_DeletedAtIsNull(feedId)).willReturn(true);
+      given(feedLikeRepository.existsByFeedIdAndUserId(feedId, userId)).willReturn(false);
+      given(feedRepository.findAuthorId(feedId)).willReturn(Optional.of(UUID.randomUUID()));
+      given(userSummaryQueryRepository.findByUserId(userId))
+          .willReturn(new UserSummary(userId, "좋아요누른사람", "img.png"));
+      given(feedLikeRepository.saveAndFlush(any(FeedLike.class)))
+          .willAnswer(inv -> inv.getArgument(0));
+      given(feedRepository.incrementLikeCount(feedId)).willReturn(1);
+
+      // when
+      feedService.like(feedId, userId);
+
+      // then
+      ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+      verify(eventPublisher, atLeastOnce()).publishEvent(captor.capture());
+      assertThat(captor.getAllValues())
+          .filteredOn(FeedIndexRequestedEvent.class::isInstance)
+          .containsExactly(FeedIndexRequestedEvent.upsert(feedId));
+    }
   }
 
   @Nested
@@ -885,6 +994,26 @@ class FeedServiceTest {
 
       // when & then
       assertThatCode(() -> feedService.unlike(feedId, userId)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("좋아요를 취소하면 검색 인덱싱 이벤트를 발행한다")
+    void 좋아요를_취소하면_검색_인덱싱_이벤트를_발행한다() {
+      // given
+      UUID feedId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+      given(feedRepository.existsByIdAndSoftDeletable_DeletedAtIsNull(feedId)).willReturn(true);
+      given(feedLikeRepository.deleteByFeedIdAndUserId(feedId, userId)).willReturn(1L);
+      given(feedRepository.decrementLikeCount(feedId)).willReturn(1);
+
+      // when
+      feedService.unlike(feedId, userId);
+
+      // then
+      ArgumentCaptor<FeedIndexRequestedEvent> captor =
+          ArgumentCaptor.forClass(FeedIndexRequestedEvent.class);
+      verify(eventPublisher).publishEvent(captor.capture());
+      assertThat(captor.getValue()).isEqualTo(FeedIndexRequestedEvent.upsert(feedId));
     }
   }
 

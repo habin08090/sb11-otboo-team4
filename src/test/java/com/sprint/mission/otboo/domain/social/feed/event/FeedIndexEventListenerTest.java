@@ -103,5 +103,24 @@ class FeedIndexEventListenerTest {
       assertThatCode(() -> listener.handle(FeedIndexRequestedEvent.upsert(feedId)))
           .doesNotThrowAnyException();
     }
+
+    @Test
+    @DisplayName("UPSERT 대상이 소프트 삭제된 피드면 인덱스에서 제거한다")
+    void UPSERT_대상이_소프트_삭제된_피드면_인덱스에서_제거한다() {
+      // given
+      UUID feedId = UUID.randomUUID();
+      Feed feed = Feed.create(UUID.randomUUID(), UUID.randomUUID(), "삭제된 피드",
+          DUMMY_SNAPSHOT, List.of());
+      setFeedId(feed, feedId);
+      feed.delete();
+      given(feedRepository.findById(feedId)).willReturn(Optional.of(feed));
+
+      // when
+      listener.handle(FeedIndexRequestedEvent.upsert(feedId));
+
+      // then
+      verify(feedSearchRepository).deleteById(feedId.toString());
+      verify(feedSearchRepository, never()).save(any(FeedDocument.class));
+    }
   }
 }

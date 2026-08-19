@@ -1,6 +1,10 @@
 # QueryDSL 사용 가이드
 
 > 이전 프로젝트(monew)에서 실제로 검증된 패턴을 그대로 가져왔습니다. `docs/conventions.md` §6(커서 페이지네이션), §2-2(네이밍)와 함께 봅니다.
+>
+> **참고**: 아래 예시의 피드 검색(`FeedCustomRepositoryImpl`)은 3차 스프린트에서 Elasticsearch로 전환되어 현재 코드베이스에 존재하지
+> 않습니다. QueryDSL 커서 페이지네이션 패턴 참고용으로만 보시고,
+> 실제 구현은 `FollowCustomRepositoryImpl`·`CommentCustomRepositoryImpl`을 확인해주세요.
 
 ## 1. 설정
 

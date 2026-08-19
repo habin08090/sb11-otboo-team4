@@ -17,6 +17,7 @@ import org.springframework.data.elasticsearch.annotations.Setting;
 public class FeedDocument {
 
   @Id
+  @Field(type = FieldType.Keyword)
   private String id;
 
   @Field(type = FieldType.Text, analyzer = "korean")

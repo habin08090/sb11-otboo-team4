@@ -5,6 +5,7 @@ import com.sprint.mission.otboo.domain.social.common.repository.querydsl.UserSum
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedCreateRequest;
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedDto;
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedListParams;
+import com.sprint.mission.otboo.domain.social.feed.dto.FeedSearchResult;
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedUpdateRequest;
 import com.sprint.mission.otboo.domain.social.feed.dto.OotdSnapshot;
 import com.sprint.mission.otboo.domain.social.feed.dto.WeatherSnapshot;
@@ -17,6 +18,7 @@ import com.sprint.mission.otboo.domain.social.feed.exception.FeedNotFoundExcepti
 import com.sprint.mission.otboo.domain.social.feed.mapper.FeedMapper;
 import com.sprint.mission.otboo.domain.social.feed.repository.FeedLikeRepository;
 import com.sprint.mission.otboo.domain.social.feed.repository.FeedRepository;
+import com.sprint.mission.otboo.domain.social.feed.repository.elasticsearch.FeedSearchRepository;
 import com.sprint.mission.otboo.domain.social.follow.repository.FollowRepository;
 import com.sprint.mission.otboo.global.dto.CursorPageResponse;
 import com.sprint.mission.otboo.global.event.NotificationLevel;
@@ -24,6 +26,7 @@ import com.sprint.mission.otboo.global.event.NotificationRequestedEvent;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -52,6 +55,7 @@ public class FeedService {
   private final FeedLikeRepository feedLikeRepository;
   private final ApplicationEventPublisher eventPublisher;
   private final FollowRepository followRepository;
+  private final FeedSearchRepository feedSearchRepository;
 
   @Transactional
   public FeedDto create(FeedCreateRequest request, UUID currentUserId) {
@@ -69,7 +73,29 @@ public class FeedService {
 
 
   public CursorPageResponse<FeedDto> getFeeds(FeedListParams params, UUID currentUserId) {
-    return toDtoPage(feedRepository.findFeeds(params), currentUserId);
+    FeedSearchResult searchResult = feedSearchRepository.search(params);
+    List<Feed> feeds = findFeedsInSearchOrder(searchResult.feedIds());
+
+    return toDtoPage(new CursorPageResponse<>(
+        feeds,
+        searchResult.nextCursor(),
+        searchResult.nextIdAfter(),
+        searchResult.hasNext(),
+        searchResult.totalCount(),
+        params.sortBy().name(),
+        params.sortDirection()), currentUserId);
+  }
+  
+  private List<Feed> findFeedsInSearchOrder(List<UUID> feedIds) {
+    if (feedIds.isEmpty()) {
+      return List.of();
+    }
+    Map<UUID, Feed> feedMap = feedRepository.findAllActiveByIds(feedIds).stream()
+        .collect(Collectors.toMap(Feed::getId, Function.identity()));
+    return feedIds.stream()
+        .map(feedMap::get)
+        .filter(Objects::nonNull)
+        .toList();
   }
 
   @Transactional
@@ -84,6 +110,7 @@ public class FeedService {
     increaseLikeCount(feedId);
     log.info("피드 좋아요 완료: feedId={}", feedId);
 
+    eventPublisher.publishEvent(FeedIndexRequestedEvent.upsert(feedId));
     publishFeedLikedNotification(feedId, currentUserId);
   }
 
@@ -93,6 +120,8 @@ public class FeedService {
     if (feedLikeRepository.deleteByFeedIdAndUserId(feedId, currentUserId) > 0) {
       decreaseLikeCount(feedId);
       log.info("피드 좋아요 취소 완료: feedId={}", feedId);
+
+      eventPublisher.publishEvent(FeedIndexRequestedEvent.upsert(feedId));
     }
   }
 

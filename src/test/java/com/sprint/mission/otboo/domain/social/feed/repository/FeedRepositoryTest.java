@@ -3,6 +3,8 @@ package com.sprint.mission.otboo.domain.social.feed.repository;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sprint.mission.otboo.domain.authuser.user.entity.User;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
+import com.sprint.mission.otboo.domain.social.feed.dto.OotdSnapshot;
 import com.sprint.mission.otboo.domain.social.feed.dto.WeatherSnapshot;
 import com.sprint.mission.otboo.domain.social.feed.entity.Feed;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
@@ -276,6 +278,110 @@ class FeedRepositoryTest {
       assertThat(updated).isZero();
       Feed found = feedRepository.findById(feed.getId()).orElseThrow();
       assertThat(found.getCommentCount()).isZero();
+    }
+  }
+
+  @Nested
+  @DisplayName("날씨 스냅샷 저장")
+  class WeatherSnapshotPersistence {
+
+    @Test
+    @DisplayName("날씨 enum 스냅샷이 저장 후 조회 시 그대로 유지된다")
+    void 날씨_enum_스냅샷이_저장_후_조회_시_그대로_유지된다() {
+      // given
+      User author = persistUser("작성자");
+      Feed feed = feedRepository.save(
+          Feed.create(author.getId(), UUID.randomUUID(), "오늘의 착장",
+              DUMMY_SNAPSHOT, List.of()));
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      Feed found = feedRepository.findById(feed.getId()).orElseThrow();
+
+      // then
+      assertThat(found.getSkyStatus()).isEqualTo(SkyStatus.CLEAR);
+      assertThat(found.getPrecipitationType()).isEqualTo(PrecipitationType.NONE);
+      assertThat(found.getTemperatureCurrent()).isEqualTo(28.0);
+      assertThat(found.getTemperatureMin()).isEqualTo(16.0);
+      assertThat(found.getTemperatureMax()).isEqualTo(31.0);
+    }
+  }
+
+  @Nested
+  @DisplayName("ootds JSONB 직렬화/역직렬화")
+  class OotdsJsonbPersistence {
+
+    @Test
+    @DisplayName("OotdSnapshot 리스트가 JSONB로 저장 후 역직렬화돼 그대로 반환된다")
+    void OotdSnapshot_리스트가_JSONB로_저장_후_역직렬화돼_그대로_반환된다() {
+      // given
+      OotdSnapshot ootd1 = new OotdSnapshot(
+          UUID.randomUUID(), "패딩", "https://img.url/padding.jpg",
+          ClothesType.OUTER, List.of());
+      OotdSnapshot ootd2 = new OotdSnapshot(
+          UUID.randomUUID(), "청바지", "https://img.url/jeans.jpg",
+          ClothesType.BOTTOM, List.of());
+
+      User author = persistUser("작성자");
+      Feed feed = feedRepository.save(
+          Feed.create(author.getId(), UUID.randomUUID(), "오늘의 착장",
+              DUMMY_SNAPSHOT, List.of(ootd1, ootd2)));
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      Feed found = feedRepository.findById(feed.getId()).orElseThrow();
+
+      // then
+      assertThat(found.getOotds()).hasSize(2);
+      assertThat(found.getOotds().get(0).name()).isEqualTo("패딩");
+      assertThat(found.getOotds().get(0).type()).isEqualTo(ClothesType.OUTER);
+      assertThat(found.getOotds().get(1).name()).isEqualTo("청바지");
+      assertThat(found.getOotds().get(1).type()).isEqualTo(ClothesType.BOTTOM);
+    }
+
+    @Test
+    @DisplayName("빈 ootds 리스트가 저장 후 빈 리스트로 반환된다")
+    void 빈_ootds_리스트가_저장_후_빈_리스트로_반환된다() {
+      // given
+      User author = persistUser("작성자");
+      Feed feed = feedRepository.save(
+          Feed.create(author.getId(), UUID.randomUUID(), "오늘의 착장",
+              DUMMY_SNAPSHOT, List.of()));
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      Feed found = feedRepository.findById(feed.getId()).orElseThrow();
+
+      // then
+      assertThat(found.getOotds()).isEmpty();
+    }
+  }
+
+  @Nested
+  @DisplayName("findAllActiveByIds")
+  class FindAllActiveByIds {
+
+    @Test
+    @DisplayName("소프트 삭제되지 않은 피드만 반환한다")
+    void 소프트_삭제되지_않은_피드만_반환한다() {
+      // given
+      Feed active = createAndSaveFeed("살아있는 피드");
+      Feed deleted = createAndSaveFeed("삭제된 피드");
+      deleted.delete();
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      List<Feed> result = feedRepository.findAllActiveByIds(
+          List.of(active.getId(), deleted.getId()));
+
+      // then
+      assertThat(result)
+          .extracting(Feed::getContent)
+          .containsExactly("살아있는 피드");
     }
   }
 }
