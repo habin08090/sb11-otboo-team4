@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 
 import com.sprint.mission.otboo.domain.authuser.user.entity.Profile;
 import com.sprint.mission.otboo.domain.authuser.user.repository.ProfileRepository;
@@ -26,6 +27,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -52,6 +54,16 @@ class RecommendationServiceTest {
 
   @Mock
   RecommendationOotdAssembler recommendationMapper;
+
+  @Mock
+  LlmRecommendationRefiner llmRecommendationRefiner;
+
+  @BeforeEach
+  void setUpLlmRefinerDefault() {
+    // 기본 동작: 규칙 기반 결과(fallback)를 그대로 통과시켜 기존 규칙 기반 테스트들이 영향받지 않게 함
+    lenient().when(llmRecommendationRefiner.refine(any(), any(), any()))
+        .thenAnswer(invocation -> invocation.getArgument(2));
+  }
 
   // --- 헬퍼 메서드 ---
 
@@ -481,6 +493,41 @@ class RecommendationServiceTest {
           .hasSize(1)
           .first()
           .satisfies(ootd -> assertThat(ootd.name()).isEqualTo("새 반팔"));
+    }
+
+    @Test
+    @DisplayName("LLM_리파이너가_반환한_결과가_최종_추천에_반영된다")
+    void LLM_리파이너가_반환한_결과가_최종_추천에_반영된다() {
+      // given
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(25.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes ruleBasedTop = createClothes(userId, "규칙 기반 반팔", ClothesType.TOP);
+      Clothes llmTop = createClothes(userId, "LLM 선택 반팔", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
+      Clothes shoes = createClothes(userId, "운동화", ClothesType.SHOES);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(List.of(ruleBasedTop, bottom, shoes));
+      given(llmRecommendationRefiner.refine(any(), any(), any()))
+          .willReturn(List.of(llmTop, bottom, shoes));
+      given(recommendationMapper.toOotdDtoList(any()))
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then
+      assertThat(result.clothes())
+          .anyMatch(ootd -> ootd.name().equals("LLM 선택 반팔"));
+      assertThat(result.clothes())
+          .noneMatch(ootd -> ootd.name().equals("규칙 기반 반팔"));
     }
   }
 }
