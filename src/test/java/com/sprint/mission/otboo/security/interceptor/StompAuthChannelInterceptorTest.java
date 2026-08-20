@@ -1,6 +1,7 @@
 package com.sprint.mission.otboo.security.interceptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -8,12 +9,14 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.sprint.mission.otboo.domain.social.directmessage.util.StompDestinationUtil;
 import com.sprint.mission.otboo.security.details.UserPrincipal;
 import com.sprint.mission.otboo.security.token.dto.AccessTokenClaims;
 import com.sprint.mission.otboo.security.token.exception.business.ExpiredTokenException;
 import com.sprint.mission.otboo.security.token.provider.TokenProvider;
 import com.sprint.mission.otboo.security.usersession.exception.business.UserSessionExpiredException;
 import com.sprint.mission.otboo.security.usersession.registry.UserSessionRegistry;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -26,9 +29,12 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("StompAuthChannelInterceptor")
@@ -43,11 +49,25 @@ class StompAuthChannelInterceptorTest {
   @Mock
   private UserSessionRegistry userSessionRegistry;
 
+  private static Authentication authentication(UUID userId) {
+    UserPrincipal principal = new UserPrincipal(userId, "USER");
+    return new UsernamePasswordAuthenticationToken(
+        principal, null, List.of(new SimpleGrantedAuthority("USER")));
+  }
+
   private Message<byte[]> connectMessage(String authorizationHeader) {
     StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
     if (authorizationHeader != null) {
       accessor.setNativeHeader("Authorization", authorizationHeader);
     }
+    accessor.setLeaveMutable(true);
+    return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
+  }
+
+  private Message<byte[]> subscribeMessage(String destination, UUID userId) {
+    StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+    accessor.setDestination(destination);
+    accessor.setUser(authentication(userId));
     accessor.setLeaveMutable(true);
     return MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
   }
@@ -144,6 +164,70 @@ class StompAuthChannelInterceptorTest {
       // when & then
       assertThatThrownBy(() -> interceptor.preSend(message, null))
           .isInstanceOf(UserSessionExpiredException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("SUBSCRIBE 인가")
+  class Subscribe {
+
+    @Test
+    @DisplayName("대화 당사자가 아니면 구독을 거절한다")
+    void 대화_당사자가_아니면_구독을_거절한다() {
+      // given
+      UUID a = UUID.randomUUID();
+      UUID b = UUID.randomUUID();
+      UUID stranger = UUID.randomUUID();
+      Message<byte[]> message = subscribeMessage(
+          StompDestinationUtil.directMessageDestination(a, b), stranger);
+
+      // when & then
+      assertThatThrownBy(() -> interceptor.preSend(message, null))
+          .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("대화 당사자면 구독을 허용한다")
+    void 대화_당사자면_구독을_허용한다() {
+      // given
+      UUID me = UUID.randomUUID();
+      UUID other = UUID.randomUUID();
+      Message<byte[]> message = subscribeMessage(
+          StompDestinationUtil.directMessageDestination(me, other), me);
+
+      // when & then
+      assertThatCode(() -> interceptor.preSend(message, null))
+          .doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("알 수 없는 destination은 구독을 거절한다")
+    void 알_수_없는_destination은_구독을_거절한다() {
+      // given
+      UUID userId = UUID.randomUUID();
+      Message<byte[]> message = subscribeMessage("/sub/notifications", userId);
+
+      // when & then
+      assertThatThrownBy(() -> interceptor.preSend(message, null))
+          .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    @DisplayName("인증 정보가 없으면 구독을 거절한다")
+    void 인증_정보가_없으면_구독을_거절한다() {
+      // given
+      UUID a = UUID.randomUUID();
+      UUID b = UUID.randomUUID();
+
+      StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+      accessor.setDestination(StompDestinationUtil.directMessageDestination(a, b));
+      accessor.setLeaveMutable(true);
+      Message<byte[]> message = MessageBuilder.createMessage(new byte[0],
+          accessor.getMessageHeaders());
+
+      // when & then
+      assertThatThrownBy(() -> interceptor.preSend(message, null))
+          .isInstanceOf(AccessDeniedException.class);
     }
   }
 }

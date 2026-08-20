@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import com.navercorp.fixturemonkey.FixtureMonkey;
 import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.navercorp.fixturemonkey.jakarta.validation.plugin.JakartaValidationPlugin;
+import com.sprint.mission.otboo.domain.authuser.user.exception.UserNotFoundException;
 import com.sprint.mission.otboo.domain.social.common.dto.UserSummary;
 import com.sprint.mission.otboo.domain.social.common.repository.querydsl.UserSummaryQueryRepository;
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageDto;
@@ -242,6 +243,31 @@ class DirectMessageServiceTest {
       assertThat(event.receiverIds()).containsExactly(receiverId);
       assertThat(event.title()).isEqualTo("[DM] 보낸사람");
       assertThat(event.content()).isEqualTo("안녕하세요?");
+    }
+
+    @Test
+    @DisplayName("수신자가 존재하지 않으면 저장하지 않고 예외를 던진다")
+    void 수신자가_존재하지_않으면_저장하지_않고_예외를_던진다() {
+      // given
+      UUID senderId = UUID.randomUUID();
+      UUID receiverId = UUID.randomUUID();
+      DirectMessageSendRequest request = fm.giveMeBuilder(DirectMessageSendRequest.class)
+          .set("senderId", senderId)
+          .set("receiverId", receiverId)
+          .sample();
+
+      UserSummary sender = fm.giveMeBuilder(UserSummary.class)
+          .set("userId", senderId)
+          .set("name", "발신자")
+          .sample();
+      given(userSummaryQueryRepository.findByUserId(senderId)).willReturn(sender);
+      given(userSummaryQueryRepository.findByUserId(receiverId))
+          .willThrow(UserNotFoundException.withNone());
+
+      // when & then
+      assertThatThrownBy(() -> directMessageService.send(request, senderId))
+          .isInstanceOf(UserNotFoundException.class);
+      verify(directMessageRepository, never()).save(any());
     }
   }
 }

@@ -73,6 +73,7 @@ public class SecurityConfig {
     http.csrf(csrf -> csrf
         .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler())
+        // STOMP는 헤더 기반 인증이라 CSRF 토큰을 사용하지 않는다.
         .ignoringRequestMatchers("/ws/**")
         // STATELESS라도 SessionManagementFilter는 모든 인증된 요청을 "새 로그인"으로 보고
         // 세션 인증 전략을 매번 다시 태운다. 기본 전략은 세션을 건드리려다 CSRF 토큰까지
@@ -103,6 +104,7 @@ public class SecurityConfig {
         .requestMatchers("/", "/index.html", "/favicon.ico", "/css/**", "/js/**", "/images/**",
             "/assets/**", "/logo_symbol.svg", "/vite.svg").permitAll()
         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+        // STOMP는 자체 인증 체계를 쓴다. 인증·인가는 StompAuthChannelInterceptor가 담당한다.
         .requestMatchers("/ws/**").permitAll()
 
         .requestMatchers("/actuator/health").permitAll()

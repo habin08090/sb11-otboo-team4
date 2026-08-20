@@ -43,6 +43,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-flyway'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:6.6.0'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-redis-spring:6.6.0'
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
     implementation 'com.nimbusds:nimbus-jose-jwt:10.1'
     implementation 'org.springframework.boot:spring-boot-starter-mail'
@@ -53,6 +55,8 @@ dependencies {
     implementation 'org.jsoup:jsoup:1.18.1'
     implementation 'org.apache.tika:tika-core:2.9.2'
     implementation 'org.springframework.retry:spring-retry'
+    implementation platform('io.opentelemetry:opentelemetry-bom:1.51.0')
+    implementation 'io.opentelemetry:opentelemetry-api'
 
     annotationProcessor 'org.projectlombok:lombok'
     annotationProcessor "io.github.openfeign.querydsl:querydsl-apt:7.5:jpa"
@@ -80,6 +84,7 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client-test'
     testImplementation 'org.awaitility:awaitility'
     testImplementation 'org.springframework.boot:spring-boot-data-elasticsearch-test'
+    testImplementation 'io.opentelemetry:opentelemetry-sdk-testing'
 
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 

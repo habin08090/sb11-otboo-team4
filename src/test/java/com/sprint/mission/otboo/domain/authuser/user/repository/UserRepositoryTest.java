@@ -9,6 +9,7 @@ import com.sprint.mission.otboo.global.config.QuerydslConfig;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -60,8 +61,8 @@ class UserRepositoryTest {
     }
 
     @Test
-    @DisplayName("이미 존재하는 이메일로 저장하면 무결성 제약 예외가 발생한다")
-    void 이미_존재하는_이메일로_저장하면_무결성_제약_예외가_발생한다() {
+    @DisplayName("이미 존재하는 이메일로 저장하면 uq_users_email 제약 위반 예외가 발생한다")
+    void 이미_존재하는_이메일로_저장하면_uq_users_email_제약_위반_예외가_발생한다() {
       // given
       User user1 = User.create("홍길동", "duplicate@test.com", "encoded-password-1");
       userRepository.save(user1);
@@ -70,7 +71,13 @@ class UserRepositoryTest {
 
       // when & then
       assertThatThrownBy(() -> userRepository.saveAndFlush(user2))
-          .isInstanceOf(DataIntegrityViolationException.class);
+          .isInstanceOf(DataIntegrityViolationException.class)
+          .satisfies(e -> {
+            Throwable cause = e.getCause();
+            assertThat(cause).isInstanceOf(ConstraintViolationException.class);
+            assertThat(((ConstraintViolationException) cause).getConstraintName())
+                .isEqualToIgnoringCase("uq_users_email");
+          });
     }
   }
 

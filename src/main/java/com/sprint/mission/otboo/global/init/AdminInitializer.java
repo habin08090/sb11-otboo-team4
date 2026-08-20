@@ -12,7 +12,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 @Slf4j
 @Component
@@ -27,11 +26,6 @@ public class AdminInitializer implements ApplicationRunner {
   @Override
   @Transactional
   public void run(ApplicationArguments args) throws Exception {
-    if (!StringUtils.hasText(adminProperties.password())) {
-      log.warn("ADMIN_PASSWORD가 설정되지 않아 관리자 계정 초기화를 건너뜁니다.");
-      return;
-    }
-
     if (userRepository.existsByEmail(adminProperties.email())) {
       log.info("관리자 계정이 이미 존재합니다: {}", adminProperties.email());
       return;

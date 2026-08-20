@@ -115,5 +115,48 @@ class DirectMessageControllerTest {
               .param("limit", "0"))
           .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @DisplayName("cursor만 있고 idAfter가 없으면 400을 반환한다")
+    void cursor만_있고_idAfter가_없으면_400을_반환한다() throws Exception {
+      // given
+      SecurityContextHolder.getContext().setAuthentication(authenticationOf(UUID.randomUUID()));
+
+      // when & then
+      mockMvc.perform(get("/api/direct-messages")
+              .param("userId", UUID.randomUUID().toString())
+              .param("cursor", "2026-08-19T00:00:00Z")
+              .param("limit", "20"))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("idAfter만 있고 cursor가 없으면 400을 반환한다")
+    void idAfter만_있고_cursor가_없으면_400을_반환한다() throws Exception {
+      // given
+      SecurityContextHolder.getContext().setAuthentication(authenticationOf(UUID.randomUUID()));
+
+      // when & then
+      mockMvc.perform(get("/api/direct-messages")
+              .param("userId", UUID.randomUUID().toString())
+              .param("idAfter", UUID.randomUUID().toString())
+              .param("limit", "20"))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("cursor가 Instant 형식이 아니면 400을 반환한다")
+    void cursor가_Instant_형식이_아니면_400을_반환한다() throws Exception {
+      // given
+      SecurityContextHolder.getContext().setAuthentication(authenticationOf(UUID.randomUUID()));
+
+      // when & then
+      mockMvc.perform(get("/api/direct-messages")
+              .param("userId", UUID.randomUUID().toString())
+              .param("cursor", "invalid-instant")
+              .param("idAfter", UUID.randomUUID().toString())
+              .param("limit", "20"))
+          .andExpect(status().isBadRequest());
+    }
   }
 }

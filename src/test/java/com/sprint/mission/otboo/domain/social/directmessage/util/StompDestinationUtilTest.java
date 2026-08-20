@@ -36,4 +36,78 @@ class StompDestinationUtilTest {
           .isEqualTo(EXPECTED_DESTINATION);
     }
   }
+
+  @Nested
+  @DisplayName("isDirectMessageParticipant")
+  class IsDirectMessageParticipant {
+
+    @Test
+    @DisplayName("대화 당사자면 true를 반환한다")
+    void 대화_당사자면_true를_반환한다() {
+      // given
+      UUID me = UUID.randomUUID();
+      UUID other = UUID.randomUUID();
+      String destination = StompDestinationUtil.directMessageDestination(me, other);
+
+      // when & then
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(destination, me)).isTrue();
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(destination, other)).isTrue();
+    }
+
+    @Test
+    @DisplayName("제3자면 false를 반환한다")
+    void 제3자면_false를_반환한다() {
+      // given
+      UUID a = UUID.randomUUID();
+      UUID b = UUID.randomUUID();
+      UUID stranger = UUID.randomUUID();
+      String destination = StompDestinationUtil.directMessageDestination(a, b);
+
+      // when & then
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(destination, stranger))
+          .isFalse();
+    }
+
+    @Test
+    @DisplayName("형식이 어긋난 destination은 거절한다")
+    void 형식이_어긋난_destination은_거절한다() {
+      // given
+      UUID userId = UUID.randomUUID();
+
+      // when & then
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(
+          "/sub/direct-messages_", userId)).isFalse();
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(
+          "/sub/direct-messages_" + userId, userId)).isFalse();
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(
+          "/sub/notifications", userId)).isFalse();
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(null, userId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("UUID 형식이 아니면 거절한다")
+    void UUID_형식이_아니면_거절한다() {
+      // given
+      UUID userId = UUID.randomUUID();
+      String destination = "/sub/direct-messages_" + userId + "_not-a-uuid";
+
+      // when & then
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(destination, userId))
+          .isFalse();
+    }
+
+    @Test
+    @DisplayName("사전순이 아닌 destination은 거절한다")
+    void 사전순이_아닌_destination은_거절한다() {
+      // given
+      UUID a = UUID.randomUUID();
+      UUID b = UUID.randomUUID();
+      String smaller = a.toString().compareTo(b.toString()) < 0 ? a.toString() : b.toString();
+      String larger = a.toString().compareTo(b.toString()) < 0 ? b.toString() : a.toString();
+
+      // when & then
+      assertThat(StompDestinationUtil.isDirectMessageParticipant(
+          "/sub/direct-messages_" + larger + "_" + smaller, a)).isFalse();
+    }
+  }
 }

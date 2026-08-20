@@ -48,22 +48,6 @@ class AdminInitializerTest {
   class Run {
 
     @Test
-    @DisplayName("비밀번호가 설정되지 않았으면 아무것도 하지 않고 건너뛴다")
-    void 비밀번호가_설정되지_않았으면_아무것도_하지_않고_건너뛴다() throws Exception {
-      // given
-      AdminProperties properties = new AdminProperties("최고 관리자", "admin@test.com", "   ");
-      AdminInitializer initializer = adminInitializer(properties);
-
-      // when
-      initializer.run(null);
-
-      // then
-      verify(userRepository, never()).existsByEmail(any());
-      verify(userRepository, never()).saveAndFlush(any());
-      verify(profileRepository, never()).save(any());
-    }
-
-    @Test
     @DisplayName("이미 동일한 이메일의 관리자 계정이 존재하면 새로 만들지 않는다")
     void 이미_동일한_이메일의_관리자_계정이_존재하면_새로_만들지_않는다() throws Exception {
       // given

@@ -70,9 +70,9 @@ class UserServiceTest {
   @Mock
   private FileStorageService fileStorageService;
 
-  private DataIntegrityViolationException uniqueViolation() {
+  private DataIntegrityViolationException uniqueViolation(String constraintName) {
     ConstraintViolationException cause =
-        new ConstraintViolationException("unique violation", null, "uq_users_email");
+        new ConstraintViolationException("unique violation", null, constraintName);
     return new DataIntegrityViolationException("could not execute statement", cause);
   }
 
@@ -121,11 +121,28 @@ class UserServiceTest {
       UserCreateRequest request = new UserCreateRequest("hong@test.com", "password1", "홍길동");
       given(userRepository.existsByEmail("hong@test.com")).willReturn(false);
       given(passwordEncoder.encode("password1")).willReturn("encoded-password");
-      given(userRepository.saveAndFlush(any(User.class))).willThrow(uniqueViolation());
+      given(userRepository.saveAndFlush(any(User.class)))
+          .willThrow(uniqueViolation("uq_users_email"));
 
       // when & then
       assertThatThrownBy(() -> userService.signUp(request))
           .isInstanceOf(DuplicateEmailException.class);
+      verify(profileRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("이메일과 무관한 제약 위반이면 예외를 변환하지 않고 그대로 전파한다")
+    void 이메일과_무관한_제약_위반이면_예외를_변환하지_않고_그대로_전파한다() {
+      // given
+      UserCreateRequest request = new UserCreateRequest("hong@test.com", "password1", "홍길동");
+      given(userRepository.existsByEmail("hong@test.com")).willReturn(false);
+      given(passwordEncoder.encode("password1")).willReturn("encoded-password");
+      DataIntegrityViolationException otherViolation = uniqueViolation("uq_other_constraint");
+      given(userRepository.saveAndFlush(any(User.class))).willThrow(otherViolation);
+
+      // when & then
+      assertThatThrownBy(() -> userService.signUp(request))
+          .isSameAs(otherViolation);
       verify(profileRepository, never()).save(any());
     }
   }

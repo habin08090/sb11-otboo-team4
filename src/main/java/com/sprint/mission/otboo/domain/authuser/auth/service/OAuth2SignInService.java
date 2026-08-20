@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 @RequiredArgsConstructor
 public class OAuth2SignInService {
+
+  private static final String UQ_USERS_EMAIL = "uq_users_email";
 
   private final UserRepository userRepository;
   private final ProfileRepository profileRepository;
@@ -112,11 +115,19 @@ public class OAuth2SignInService {
       savedUser = userRepository.saveAndFlush(newUser);
     } catch (DataIntegrityViolationException e) {
       // findByEmail 확인과 저장 사이에 다른 요청이 같은 이메일로 먼저 가입한 경우.
-      throw DuplicateEmailException.withEmail(email, e);
+      if (isEmailUniqueViolation(e)) {
+        throw DuplicateEmailException.withEmail(email, e);
+      }
+      throw e;
     }
 
     profileRepository.save(Profile.create(savedUser));
     socialAccountRepository.save(SocialAccount.link(savedUser, provider, providerId, email));
     return savedUser;
+  }
+
+  private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
+    return e.getCause() instanceof ConstraintViolationException cve
+        && UQ_USERS_EMAIL.equalsIgnoreCase(cve.getConstraintName());
   }
 }

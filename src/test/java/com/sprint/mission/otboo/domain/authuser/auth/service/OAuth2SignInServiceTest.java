@@ -33,6 +33,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -84,6 +85,12 @@ class OAuth2SignInServiceTest {
     User user = User.create(name, email, "encoded-password");
     ReflectionTestUtils.setField(user, "id", id);
     return user;
+  }
+
+  private DataIntegrityViolationException uniqueViolation(String constraintName) {
+    ConstraintViolationException cause =
+        new ConstraintViolationException("unique violation", null, constraintName);
+    return new DataIntegrityViolationException("could not execute statement", cause);
   }
 
   @Nested
@@ -301,12 +308,31 @@ class OAuth2SignInServiceTest {
       given(userRepository.findByEmail("race@gmail.com")).willReturn(Optional.empty());
       given(passwordEncoder.encode(any())).willReturn("random-encoded-password");
       given(userRepository.saveAndFlush(any(User.class)))
-          .willThrow(new DataIntegrityViolationException("unique constraint violated"));
+          .willThrow(uniqueViolation("uq_users_email"));
 
       // when & then
       assertThatThrownBy(() -> oAuth2SignInService.signIn(
           OAuth2Provider.GOOGLE, "google-5", "race@gmail.com", "홍길동", null))
           .isInstanceOf(DuplicateEmailException.class);
+      verify(profileRepository, never()).save(any());
+      verify(socialAccountRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("이메일과 무관한 제약 위반이면 예외를 변환하지 않고 그대로 전파한다")
+    void 이메일과_무관한_제약_위반이면_예외를_변환하지_않고_그대로_전파한다() {
+      // given
+      given(socialAccountRepository.findByProviderAndProviderId(OAuth2Provider.GOOGLE, "google-8"))
+          .willReturn(Optional.empty());
+      given(userRepository.findByEmail("other@gmail.com")).willReturn(Optional.empty());
+      given(passwordEncoder.encode(any())).willReturn("random-encoded-password");
+      DataIntegrityViolationException otherViolation = uniqueViolation("uq_other_constraint");
+      given(userRepository.saveAndFlush(any(User.class))).willThrow(otherViolation);
+
+      // when & then
+      assertThatThrownBy(() -> oAuth2SignInService.signIn(
+          OAuth2Provider.GOOGLE, "google-8", "other@gmail.com", "홍길동", null))
+          .isSameAs(otherViolation);
       verify(profileRepository, never()).save(any());
       verify(socialAccountRepository, never()).save(any());
     }

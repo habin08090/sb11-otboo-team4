@@ -1018,22 +1018,33 @@ public class FeedMapper {
 - SockJS 엔드포인트: `/ws`, STOMP, CONNECT 헤더 `Authorization: Bearer {accessToken}`
 - 발행 destination: `/pub/direct-messages_send`, body `{senderId, receiverId, content}`
 - 구독 destination: `/sub/direct-messages_{두 사용자 UUID를 문자열 사전순 정렬 후 "_"로 연결}`
+- 에러 채널: `/user/queue/errors`, body `ErrorResponse`
+
+> destination prefix는 `global/config/StompDestinations`가 단일 출처입니다.
+> 브로커 설정(`WebSocketConfig`)과 destination 생성(`StompDestinationUtil`)이 같은 상수를 참조해야 하며,
+> 한쪽만 바뀌면 컴파일도 테스트도 통과하지만 런타임에 메시지가 조용히 유실됩니다.
+>
+> SUBSCRIBE 시 `StompAuthChannelInterceptor`가 인증 사용자가 대화 당사자인지 인가합니다.
+> destination이 정규 형식(UUID 두 개, 사전순)이 아니면 거절합니다.
+>
+> STOMP 메시지 처리 중 발생한 예외는 `global/exception/StompExceptionHandler`가 처리합니다.
+> ERROR 프레임은 STOMP 명세상 연결 종료를 수반하므로, 애플리케이션 검증 실패로 소켓이 끊기지 않도록
+> `@SendToUser`로 에러 채널에 전달합니다.
 
 ```java
 
-@MessageMapping("/direct-messages_send")
-public void send(DirectMessageSendRequest request) {
-  DirectMessageDto saved = directMessageService.send(request);
-  String destination = resolveDestination(request.senderId(), request.receiverId());
-  messagingTemplate.convertAndSend(destination, saved);
-}
+// global/config/StompDestinations.java : prefix 단일 출처
+// global/config/WebSocketConfig.java : STOMP 엔드포인트 /ws, CONNECT 인증·SUBSCRIBE 인가(ChannelInterceptor)
+// domain/social/directmessage/util/StompDestinationUtil.java : destination 생성·검증
 
-private String resolveDestination(UUID senderId, UUID receiverId) {
-  String a = senderId.toString();
-  String b = receiverId.toString();
-  return a.compareTo(b) < 0
-      ? "/sub/direct-messages_" + a + "_" + b
-      : "/sub/direct-messages_" + b + "_" + a;
+@MessageMapping("/direct-messages_send")
+public void send(@Valid DirectMessageSendRequest request, Principal principal) {
+  UUID currentUserId = extractUserId(principal);
+  DirectMessageDto saved = directMessageService.send(request, currentUserId);
+
+  String destination = StompDestinationUtil.directMessageDestination(
+      saved.sender().userId(), saved.receiver().userId());
+  messagingTemplate.convertAndSend(destination, saved);
 }
 ```
 

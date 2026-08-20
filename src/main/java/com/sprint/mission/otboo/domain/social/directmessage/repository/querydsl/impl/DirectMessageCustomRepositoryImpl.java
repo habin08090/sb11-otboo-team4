@@ -47,7 +47,7 @@ public class DirectMessageCustomRepositoryImpl implements DirectMessageCustomRep
     return queryFactory
         .selectFrom(directMessage)
         .where(
-            betweenUsers(currentUserId, params.userId()),
+            inConversation(currentUserId, params.userId()),
             cursorCondition(params.cursor(), params.idAfter())
         )
         .orderBy(directMessage.createdAt.desc(), directMessage.id.desc())
@@ -59,15 +59,15 @@ public class DirectMessageCustomRepositoryImpl implements DirectMessageCustomRep
     return Optional.ofNullable(
         queryFactory.select(directMessage.count())
             .from(directMessage)
-            .where(betweenUsers(currentUserId, otherUserId))
+            .where(inConversation(currentUserId, otherUserId))
             .fetchOne()
     ).orElse(0L);
   }
 
-  // 발신/수신 방향 모두 포함
-  private BooleanExpression betweenUsers(UUID one, UUID other) {
-    return directMessage.senderId.eq(one).and(directMessage.receiverId.eq(other))
-        .or(directMessage.senderId.eq(other).and(directMessage.receiverId.eq(one)));
+
+  // 양방향 OR 대신 대화방 식별자 단일 등치로 조회한다.
+  private BooleanExpression inConversation(UUID one, UUID other) {
+    return directMessage.conversationId.eq(DirectMessage.toConversationId(one, other));
   }
 
   private BooleanExpression cursorCondition(String cursor, UUID idAfter) {

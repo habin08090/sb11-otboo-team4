@@ -19,6 +19,7 @@ import com.sprint.mission.otboo.global.temppassword.registry.TempPasswordRegistr
 import com.sprint.mission.otboo.security.usersession.registry.UserSessionRegistry;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class UserService {
+
+  private static final String UQ_USERS_EMAIL = "uq_users_email";
 
   private final UserRepository userRepository;
   private final ProfileRepository profileRepository;
@@ -46,12 +49,14 @@ public class UserService {
 
     User newUser = User.create(request.name(), request.email(),
         passwordEncoder.encode(request.password()));
-    User savedUser = null;
+    User savedUser;
     try {
       savedUser = userRepository.saveAndFlush(newUser);
     } catch (DataIntegrityViolationException e) {
-      throw DuplicateEmailException.withEmail(
-          request.email()); // TODO: 특정 DB에 의존하게 되는데 어떻게 해야할까? 고민중
+      if (isEmailUniqueViolation(e)) {
+        throw DuplicateEmailException.withEmail(request.email(), e);
+      }
+      throw e;
     }
 
     Profile newProfile = Profile.create(savedUser);
@@ -115,5 +120,10 @@ public class UserService {
     if (!userId.equals(requestUserId)) {
       throw AccessDeniedException.withNone();
     }
+  }
+
+  private boolean isEmailUniqueViolation(DataIntegrityViolationException e) {
+    return e.getCause() instanceof ConstraintViolationException cve
+        && UQ_USERS_EMAIL.equalsIgnoreCase(cve.getConstraintName());
   }
 }

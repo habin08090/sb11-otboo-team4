@@ -22,6 +22,8 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @Entity
 public class DirectMessage {
 
+  private static final String SEPARATOR = "_";
+
   @Id
   @GeneratedValue(strategy = GenerationType.UUID)
   @Column(name = "id", columnDefinition = "uuid", nullable = false, updatable = false)
@@ -40,13 +42,25 @@ public class DirectMessage {
   @Column(name = "content", nullable = false, columnDefinition = "text")
   private String content;
 
+  @Column(name = "conversation_id", nullable = false, length = 73)
+  private String conversationId;
+
   private DirectMessage(UUID senderId, UUID receiverId, String content) {
     this.senderId = senderId;
     this.receiverId = receiverId;
     this.content = content;
+    this.conversationId = toConversationId(senderId, receiverId);
   }
 
   public static DirectMessage create(UUID senderId, UUID receiverId, String content) {
     return new DirectMessage(senderId, receiverId, content);
+  }
+
+  // 두 UUID를 사전순으로 결합해 방향에 무관한 대화방 식별자를 만든다.
+  // 조회 시 양방향 OR 대신 단일 등치 조건을 쓸 수 있다.
+  public static String toConversationId(UUID one, UUID other) {
+    String a = one.toString();
+    String b = other.toString();
+    return a.compareTo(b) < 0 ? a + SEPARATOR + b : b + SEPARATOR + a;
   }
 }

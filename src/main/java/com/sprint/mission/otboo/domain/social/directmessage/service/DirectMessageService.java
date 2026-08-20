@@ -47,12 +47,13 @@ public class DirectMessageService {
   public DirectMessageDto send(DirectMessageSendRequest request, UUID currentUserId) {
     validateSendRequest(request, currentUserId);
 
+    UserSummary sender = userSummaryQueryRepository.findByUserId(request.senderId());
+    UserSummary receiver = userSummaryQueryRepository.findByUserId(request.receiverId());
+
     DirectMessage message = directMessageRepository.save(
         DirectMessage.create(request.senderId(), request.receiverId(), request.content()));
     log.info("DM 전송 완료: dmId={}", message.getId());
 
-    UserSummary sender = userSummaryQueryRepository.findByUserId(message.getSenderId());
-    UserSummary receiver = userSummaryQueryRepository.findByUserId(message.getReceiverId());
     publishDirectMessageNotification(message.getReceiverId(), sender.name(), message.getContent());
 
     return directMessageMapper.toDto(message, sender, receiver);
