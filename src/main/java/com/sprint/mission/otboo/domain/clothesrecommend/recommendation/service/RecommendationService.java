@@ -13,6 +13,8 @@ import com.sprint.mission.otboo.domain.social.feed.dto.OotdDto;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.Weather;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.WindStrength;
+import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationCandidate;
+import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationContext;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -43,6 +45,7 @@ public class RecommendationService {
   private final ProfileRepository profileRepository;
   private final ClothesRepository clothesRepository;
   private final RecommendationOotdAssembler recommendationOotdAssembler;
+  private final LlmRecommendationRefiner llmRecommendationRefiner;
 
   public RecommendationDto recommend(UUID weatherId, UUID userId) {
     Weather weather = weatherRepository.findById(weatherId)
@@ -67,13 +70,30 @@ public class RecommendationService {
       return new RecommendationDto(weatherId, userId, List.of());
     }
 
-    List<Clothes> selectedClothes = selectClothesByType(userClothes, recommendedTypes);
+    List<Clothes> ruleBasedSelection = selectClothesByType(userClothes, recommendedTypes);
+
+    LlmRecommendationContext llmContext = buildLlmContext(
+        weather.getTemperatureCurrent(), adjustedTemp,
+        weather.getPrecipitationType(), weather.getWindAsWord(),
+        profile.getTemperatureSensitivity(), userClothes);
+    List<Clothes> selectedClothes = llmRecommendationRefiner.refine(
+        llmContext, userClothes, ruleBasedSelection);
 
     List<OotdDto> ootdList = recommendationOotdAssembler.toOotdDtoList(selectedClothes);
 
     log.info("추천 완료 weatherId={}, 추천 의상 수={}", weatherId, ootdList.size());
 
     return new RecommendationDto(weatherId, userId, ootdList);
+  }
+
+  LlmRecommendationContext buildLlmContext(double currentTemp, double adjustedTemp,
+      PrecipitationType precipitationType, WindStrength windStrength, int sensitivity,
+      List<Clothes> candidates) {
+    List<LlmRecommendationCandidate> llmCandidates = candidates.stream()
+        .map(c -> new LlmRecommendationCandidate(c.getId(), c.getName(), c.getType(), ""))
+        .toList();
+    return new LlmRecommendationContext(
+        currentTemp, adjustedTemp, precipitationType, windStrength, sensitivity, llmCandidates);
   }
 
   double adjustTemperature(double currentTemp, int sensitivity) {
