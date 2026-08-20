@@ -13,6 +13,7 @@ import com.sprint.mission.otboo.domain.social.feed.dto.OotdDto;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.Weather;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.WindStrength;
+import com.sprint.mission.otboo.domain.weathernotification.weather.repository.WeatherRepository;
 import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationCandidate;
 import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationContext;
 import java.util.ArrayList;
@@ -25,7 +26,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.sprint.mission.otboo.domain.weathernotification.weather.repository.WeatherRepository;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -163,9 +163,7 @@ public class RecommendationService {
           .filter(c -> c.getType() == ClothesType.DRESS)
           .max(Comparator.comparing(Clothes::getCreatedAt)
               .thenComparing(Clothes::getId))
-          .ifPresent(dress -> {
-            selected.add(dress);
-          });
+          .ifPresent(selected::add);
       dressSelected = !selected.isEmpty();
     }
 
