@@ -102,8 +102,39 @@ class LlmRecommendationRefinerTest {
     }
 
     @Test
+    @DisplayName("DRESS와_BOTTOM이_동시에_포함되면_규칙_기반_결과로_폴백한다")
+    void DRESS와_BOTTOM이_동시에_포함되면_규칙_기반_결과로_폴백한다() {
+      Clothes dress = Clothes.create(UUID.randomUUID(), "원피스", ClothesType.DRESS);
+      Clothes bottom = Clothes.create(UUID.randomUUID(), "청바지", ClothesType.BOTTOM);
+      List<Clothes> candidates = List.of(dress, bottom);
+      List<Clothes> fallback = List.of(dress);
+
+      given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
+          .willReturn(new LlmSelectedClothes(List.of(dress.getId(), bottom.getId())));
+
+      List<Clothes> result = refiner().refine(context, candidates, fallback);
+
+      assertThat(result).isEqualTo(fallback);
+    }
+
+    @Test
     @DisplayName("LLM_호출이_실패하면_규칙_기반_결과로_폴백한다")
     void LLM_호출이_실패하면_규칙_기반_결과로_폴백한다() {
+      Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
+      List<Clothes> candidates = List.of(top);
+      List<Clothes> fallback = List.of(top);
+
+      given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
+          .willThrow(LlmApiException.callFailed(new RuntimeException("connection reset")));
+
+      List<Clothes> result = refiner().refine(context, candidates, fallback);
+
+      assertThat(result).isEqualTo(fallback);
+    }
+
+    @Test
+    @DisplayName("LLM_응답_파싱이_실패하면_규칙_기반_결과로_폴백한다")
+    void LLM_응답_파싱이_실패하면_규칙_기반_결과로_폴백한다() {
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       List<Clothes> candidates = List.of(top);
       List<Clothes> fallback = List.of(top);
