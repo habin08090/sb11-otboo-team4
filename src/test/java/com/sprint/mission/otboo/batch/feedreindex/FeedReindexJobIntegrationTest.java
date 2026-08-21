@@ -11,6 +11,7 @@ import com.sprint.mission.otboo.domain.social.feed.repository.FeedRepository;
 import com.sprint.mission.otboo.domain.social.feed.repository.elasticsearch.FeedSearchRepository;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.SkyStatus;
+import com.sprint.mission.otboo.global.testcontainers.IntegrationTestSupport;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +37,7 @@ import org.springframework.test.context.ActiveProfiles;
 @ActiveProfiles("test")
 @SpringBatchTest
 @DisplayName("FeedReindexJob")
-class FeedReindexJobIntegrationTest {
+class FeedReindexJobIntegrationTest extends IntegrationTestSupport {
 
   private static final WeatherSnapshot DUMMY_SNAPSHOT = new WeatherSnapshot(
       SkyStatus.CLEAR, PrecipitationType.NONE,

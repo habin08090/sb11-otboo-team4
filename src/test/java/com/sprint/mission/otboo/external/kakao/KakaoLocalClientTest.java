@@ -3,6 +3,7 @@ package com.sprint.mission.otboo.external.kakao;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sprint.mission.otboo.external.kakao.dto.KakaoRegionResponse;
+import com.sprint.mission.otboo.global.testcontainers.IntegrationTestSupport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
@@ -12,7 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 @Tag("external")
 @SpringBootTest
-class KakaoLocalClientTest {
+class KakaoLocalClientTest extends IntegrationTestSupport {
 
   @Autowired
   private KakaoLocalClient kakaoLocalClient;

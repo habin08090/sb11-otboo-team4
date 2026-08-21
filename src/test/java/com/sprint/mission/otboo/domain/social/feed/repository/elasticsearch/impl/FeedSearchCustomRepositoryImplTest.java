@@ -12,6 +12,7 @@ import com.sprint.mission.otboo.domain.social.feed.repository.elasticsearch.Feed
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.SkyStatus;
 import com.sprint.mission.otboo.global.dto.SortDirection;
+import com.sprint.mission.otboo.global.testcontainers.ElasticsearchTestContainerSupport;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -28,7 +29,7 @@ import org.springframework.test.context.ActiveProfiles;
 @DataElasticsearchTest
 @ActiveProfiles("test")
 @DisplayName("FeedSearchCustomRepository")
-class FeedSearchCustomRepositoryImplTest {
+class FeedSearchCustomRepositoryImplTest extends ElasticsearchTestContainerSupport {
 
   @Autowired
   private FeedSearchRepository feedSearchRepository;
@@ -48,8 +49,12 @@ class FeedSearchCustomRepositoryImplTest {
 
   @BeforeEach
   void setUp() {
+    var indexOps = operations.indexOps(FeedDocument.class);
+    if (!indexOps.exists()) {
+      indexOps.createWithMapping();
+    }
     feedSearchRepository.deleteAll();
-    operations.indexOps(FeedDocument.class).refresh();
+    indexOps.refresh();
   }
 
   @AfterEach

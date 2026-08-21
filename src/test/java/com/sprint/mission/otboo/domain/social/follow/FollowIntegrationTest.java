@@ -8,6 +8,7 @@ import com.sprint.mission.otboo.domain.social.follow.dto.FollowCreateRequest;
 import com.sprint.mission.otboo.domain.social.follow.dto.FollowDto;
 import com.sprint.mission.otboo.domain.social.follow.repository.FollowRepository;
 import com.sprint.mission.otboo.domain.social.follow.service.FollowService;
+import com.sprint.mission.otboo.global.testcontainers.IntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -22,7 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 @DisplayName("Follow 통합 테스트")
-class FollowIntegrationTest {
+class FollowIntegrationTest extends IntegrationTestSupport {
 
   @Autowired
   private FollowService followService;

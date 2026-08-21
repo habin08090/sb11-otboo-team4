@@ -3,6 +3,7 @@ package com.sprint.mission.otboo.external.kma;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sprint.mission.otboo.external.kma.dto.KmaWeatherResponse;
+import com.sprint.mission.otboo.global.testcontainers.IntegrationTestSupport;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -16,7 +17,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 @Tag("external")
 @SpringBootTest
-class KmaWeatherClientTest {
+class KmaWeatherClientTest extends IntegrationTestSupport {
 
   @Autowired
   private KmaWeatherClient kmaWeatherClient;

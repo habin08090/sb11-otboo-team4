@@ -11,6 +11,7 @@ import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.
 import com.sprint.mission.otboo.domain.weathernotification.weather.repository.WeatherD1BaselineRepository;
 import com.sprint.mission.otboo.domain.weathernotification.weather.repository.WeatherGridRepository;
 import com.sprint.mission.otboo.domain.weathernotification.weather.repository.WeatherRepository;
+import com.sprint.mission.otboo.global.testcontainers.IntegrationTestSupport;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -35,7 +36,7 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @ActiveProfiles("test")
 @SpringBatchTest
-class WeatherRetentionJobIntegrationTest {
+class WeatherRetentionJobIntegrationTest extends IntegrationTestSupport {
 
   private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 

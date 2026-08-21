@@ -52,7 +52,9 @@ class UserSessionRedisRegistryTest implements RedisTestContainerSupport {
 시작만 시킵니다.
 
 **전제 조건**: 이 패턴은 아래 두 조건이 성립하는 동안만 안전합니다.
-- 테스트 실행이 병렬이 아닐 것 (`build.gradle`에 `maxParallelForks`/`parallel` 미설정, `junit-platform.properties` 없음)
+
+- 테스트 실행이 병렬이 아닐 것 (`build.gradle`에 `maxParallelForks`/`parallel` 미설정, `junit-platform.properties`
+  없음)
 - 어떤 테스트도 다른 테스트의 키를 광범위하게 조회/검증하지 않을 것 (`redisTemplate.keys(...)` 같은 전체 스캔 금지)
 
 `flushAll()`처럼 컨테이너 전체를 비우는 호출은 병렬 실행 시 다른 클래스의 상태를 지울 수 있습니다. 위 두 조건 중 하나라도
@@ -61,8 +63,39 @@ class UserSessionRedisRegistryTest implements RedisTestContainerSupport {
 
 ## 3. Elasticsearch
 
-CI/로컬 모두 사전에 기동된 컨테이너(`docker/elasticsearch/Dockerfile` 빌드 + 실행)에 연결합니다. 테스트 코드에서
-별도로 컨테이너를 관리하지 않습니다.
+`IntegrationTestSupport`(`@SpringBootTest` 계열) 또는 `ElasticsearchTestContainerSupport`(ES 슬라이스
+테스트)를 상속하면 테스트 실행 시 컨테이너가 자동으로 기동됩니다. 로컬 개발용 ES(9200)나 compose
+ES(9201)와는 무관하므로, 테스트가 개발 중인 인덱스를 건드리지 않습니다.
+
+```java
+class FeedLikeIntegrationTest extends IntegrationTestSupport {
+```
+
+```java
+
+@DataElasticsearchTest
+class FeedSearchCustomRepositoryImplTest extends ElasticsearchTestContainerSupport {
+```
+
+`@SpringBootTest`는 ES 커넥션을 컨텍스트 초기화 시점에 맺으므로, ES를 직접 쓰지 않는 통합 테스트도 컨테이너가 필요합니다.
+`@SpringBootTest(classes = {...})`로 범위를 좁혀 ES 자동설정이 올라오지 않는 테스트는 상속하지 않습니다.
+
+**전제 조건 — 이미지 사전 빌드**: Nori 형태소 분석기가 필요해 공식 이미지를 그대로 쓸 수 없습니다. 테스트
+실행 전 아래를 한 번 실행해야 합니다. CI는 워크플로에서 같은 명령을 수행합니다.
+
+```bash
+docker build -t otboo-es docker/elasticsearch
+```
+
+**주의 1 — 인터페이스가 아닌 추상 클래스**: `IntegrationTestSupport`가 이를 상속해,
+전체 컨텍스트 테스트와 ES 슬라이스 테스트가 같은 컨테이너와 프로퍼티 등록을 공유하는 계층을 만듭니다.
+
+**주의 2 — `@ServiceConnection` 대신 static 필드**: `@ServiceConnection`으로 빈 등록하면 컨텍스트가 종료될 때 컨테이너도 함께
+내려갑니다. 같은 설정의 컨텍스트는 캐시되어 재사용되지만, 이 프로젝트는 `@MockitoBean`/`@TestBean`으로 컨텍스트가 여러 갈래로 갈라져 그만큼 재기동됩니다.
+static 필드는 컨텍스트 수명과 무관하게 JVM당 한 번만 뜹니다.
+
+**주의 3 — `asCompatibleSubstituteFor` 필요**: Testcontainers는 이미지 이름으로 ES 여부를 판별합니다.
+커스텀 태그(`otboo-es`)를 쓰면 이 선언이 없을 때 기동을 거부합니다.
 
 ## 4. Kafka — `@EmbeddedKafka`
 
@@ -75,6 +108,7 @@ Docker 컨테이너가 아니라 JVM 내 임베디드 브로커를 씁니다. `@
 브로커만 생성되고 빈으로 등록되지 않습니다.
 
 ```java
+
 @SpringBootTest
 @EmbeddedKafka(partitions = 1, topics = {"notification-requested"})
 @DirtiesContext

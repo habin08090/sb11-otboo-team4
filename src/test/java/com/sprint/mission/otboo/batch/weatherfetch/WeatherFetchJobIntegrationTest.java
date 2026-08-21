@@ -31,9 +31,10 @@ import com.sprint.mission.otboo.domain.weathernotification.weather.service.Weath
 import com.sprint.mission.otboo.external.kma.KmaBaseTimeCalculator;
 import com.sprint.mission.otboo.external.kma.KmaBaseTimeCalculator.BaseTime;
 import com.sprint.mission.otboo.external.kma.KmaForecastFetcher;
-import com.sprint.mission.otboo.external.kma.exception.KmaApiException;
 import com.sprint.mission.otboo.external.kma.KmaGridConverter.KmaGridPoint;
 import com.sprint.mission.otboo.external.kma.dto.WeatherForecastSlotDto;
+import com.sprint.mission.otboo.external.kma.exception.KmaApiException;
+import com.sprint.mission.otboo.global.testcontainers.IntegrationTestSupport;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -65,7 +66,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest
 @ActiveProfiles("test")
 @SpringBatchTest
-class WeatherFetchJobIntegrationTest {
+class WeatherFetchJobIntegrationTest extends IntegrationTestSupport {
 
   private static final FixtureMonkey FIXTURE_MONKEY = FixtureMonkey.builder()
       .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
@@ -327,45 +328,18 @@ class WeatherFetchJobIntegrationTest {
     // 2026-08-12 09:10 KST(버퍼 20분 적용 시 08:50) - baseTime "0800"으로 고정해 D0가
     // 평가 대상에서 빠지는 23:30 회차를 피한다. 실제 시각과 무관하게 결정적으로 재현.
     private static final Instant FIXED_NOW = Instant.parse("2026-08-12T00:10:00Z");
-
-    // D1 체인 테스트가 "어제 20시 → 오늘 20시"를 한 테스트 메서드 안에서 재현하려면 Clock을
-    // 중간에 전진시켜야 한다 - Clock.fixed()는 불변이라 대신 이 mutable 구현을 쓴다.
-    private static final class MutableClock extends Clock {
-
-      private final AtomicReference<Instant> instant;
-      private final ZoneId zone;
-
-      private MutableClock(AtomicReference<Instant> instant, ZoneId zone) {
-        this.instant = instant;
-        this.zone = zone;
-      }
-
-      static MutableClock startingAt(Instant initial, ZoneId zone) {
-        return new MutableClock(new AtomicReference<>(initial), zone);
-      }
-
-      void advanceTo(Instant next) {
-        instant.set(next);
-      }
-
-      @Override
-      public ZoneId getZone() {
-        return zone;
-      }
-
-      @Override
-      public Clock withZone(ZoneId zone) {
-        return this.zone.equals(zone) ? this : new MutableClock(instant, zone);
-      }
-
-      @Override
-      public Instant instant() {
-        return instant.get();
-      }
-    }
-
     @TestBean
     private Clock clock;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private ProfileRepository profileRepository;
+    @Autowired
+    private NotificationRepository notificationRepository;
+    @Autowired
+    private WeatherWriter weatherWriter;
+    @Autowired
+    private WeatherSuddenChangeNotifier weatherSuddenChangeNotifier;
 
     static Clock clock() {
       return MutableClock.startingAt(FIXED_NOW, KST);
@@ -374,21 +348,6 @@ class WeatherFetchJobIntegrationTest {
     private void advanceClockTo(Instant instant) {
       ((MutableClock) clock).advanceTo(instant);
     }
-
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private ProfileRepository profileRepository;
-
-    @Autowired
-    private NotificationRepository notificationRepository;
-
-    @Autowired
-    private WeatherWriter weatherWriter;
-
-    @Autowired
-    private WeatherSuddenChangeNotifier weatherSuddenChangeNotifier;
 
     @BeforeEach
     void setUpNotification() {
@@ -512,6 +471,42 @@ class WeatherFetchJobIntegrationTest {
       // 전진해 재사용되지 않으므로, retention 배치의 cutoff(오늘) 삭제에 맡긴다(#163).
       assertThat(weatherD1BaselineRepository.findByWeatherGridAndTargetDate(grid, d2Date))
           .isPresent();
+    }
+
+    // D1 체인 테스트가 "어제 20시 → 오늘 20시"를 한 테스트 메서드 안에서 재현하려면 Clock을
+    // 중간에 전진시켜야 한다 - Clock.fixed()는 불변이라 대신 이 mutable 구현을 쓴다.
+    private static final class MutableClock extends Clock {
+
+      private final AtomicReference<Instant> instant;
+      private final ZoneId zone;
+
+      private MutableClock(AtomicReference<Instant> instant, ZoneId zone) {
+        this.instant = instant;
+        this.zone = zone;
+      }
+
+      static MutableClock startingAt(Instant initial, ZoneId zone) {
+        return new MutableClock(new AtomicReference<>(initial), zone);
+      }
+
+      void advanceTo(Instant next) {
+        instant.set(next);
+      }
+
+      @Override
+      public ZoneId getZone() {
+        return zone;
+      }
+
+      @Override
+      public Clock withZone(ZoneId zone) {
+        return this.zone.equals(zone) ? this : new MutableClock(instant, zone);
+      }
+
+      @Override
+      public Instant instant() {
+        return instant.get();
+      }
     }
   }
 }

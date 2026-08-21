@@ -11,6 +11,7 @@ import com.sprint.mission.otboo.domain.social.feed.repository.FeedRepository;
 import com.sprint.mission.otboo.domain.social.feed.service.FeedService;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.SkyStatus;
+import com.sprint.mission.otboo.global.testcontainers.IntegrationTestSupport;
 import jakarta.persistence.EntityManager;
 import java.util.List;
 import java.util.UUID;
@@ -26,7 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 @ActiveProfiles("test")
 @Transactional
 @DisplayName("FeedLike 통합 테스트")
-class FeedLikeIntegrationTest {
+class FeedLikeIntegrationTest extends IntegrationTestSupport {
 
   static final WeatherSnapshot DUMMY_SNAPSHOT = new WeatherSnapshot(
       SkyStatus.CLEAR, PrecipitationType.NONE,
