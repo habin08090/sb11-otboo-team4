@@ -89,5 +89,57 @@ class ClothesAttributeRepositoryTest {
       assertThat(clothesAttributeRepository.findAllByClothesIdWithDefinition(otherClothesId))
           .hasSize(1);
     }
+
+    @Test
+    @DisplayName("삭제 직후 같은 의상·정의 조합을 다시 저장해도 유니크 제약을 위반하지 않는다")
+    void 삭제_직후_같은_의상_정의_조합을_다시_저장해도_유니크_제약을_위반하지_않는다() {
+      // given
+      UUID clothesId = UUID.randomUUID();
+      ClothesAttributeDef definition =
+          clothesAttributeDefRepository.save(ClothesAttributeDef.create("색상"));
+      clothesAttributeRepository.save(
+          ClothesAttribute.create(clothesId, definition, "블랙"));
+
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when: 의상 수정 시의 "기존 속성 전체 삭제 후 재등록" 흐름과 동일하다
+      clothesAttributeRepository.deleteAllByClothesId(clothesId);
+      clothesAttributeRepository.saveAll(
+          List.of(ClothesAttribute.create(clothesId, definition, "네이비")));
+      testEntityManager.flush();
+
+      // then
+      List<ClothesAttribute> attributes =
+          clothesAttributeRepository.findAllByClothesIdWithDefinition(clothesId);
+      assertThat(attributes).hasSize(1);
+      assertThat(attributes.get(0).getValue()).isEqualTo("네이비");
+    }
+  }
+
+  @Nested
+  @DisplayName("속성 정의 지연 로딩")
+  class LazyDefinition {
+
+    @Test
+    @DisplayName("조회한 속성의 정의를 지연 로딩으로 읽을 수 있다")
+    void 조회한_속성의_정의를_지연_로딩으로_읽을_수_있다() {
+      // given
+      UUID clothesId = UUID.randomUUID();
+      ClothesAttributeDef definition =
+          clothesAttributeDefRepository.save(ClothesAttributeDef.create("소재"));
+      ClothesAttribute saved = clothesAttributeRepository.save(
+          ClothesAttribute.create(clothesId, definition, "면"));
+
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when: definition은 프록시로 채워지므로 접근 시점에 초기화된다
+      ClothesAttribute found = clothesAttributeRepository.findById(saved.getId())
+          .orElseThrow();
+
+      // then
+      assertThat(found.getDefinition().getName()).isEqualTo("소재");
+    }
   }
 }
