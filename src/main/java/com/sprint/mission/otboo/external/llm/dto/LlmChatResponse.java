@@ -23,6 +23,10 @@ public record LlmChatResponse(
     if (choices == null || choices.isEmpty()) {
       return null;
     }
-    return choices.get(0).message().content();
+    Choice choice = choices.get(0);
+    if (choice == null || choice.message() == null) {
+      return null;
+    }
+    return choice.message().content();
   }
 }
