@@ -38,6 +38,10 @@ public class LlmRecommendationParser {
           .map(idNode -> UUID.fromString(idNode.asString()))
           .toList();
 
+      if (clothesIds.isEmpty()) {
+        throw LlmApiException.parseFailed();
+      }
+
       return new LlmSelectedClothes(clothesIds);
     } catch (LlmApiException e) {
       throw e;
