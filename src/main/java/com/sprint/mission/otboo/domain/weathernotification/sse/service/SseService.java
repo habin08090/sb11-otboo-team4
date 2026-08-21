@@ -1,22 +1,27 @@
 package com.sprint.mission.otboo.domain.weathernotification.sse.service;
 
 import com.sprint.mission.otboo.domain.weathernotification.notification.dto.NotificationDto;
+import com.sprint.mission.otboo.domain.weathernotification.sse.config.SseConfig;
 import com.sprint.mission.otboo.domain.weathernotification.sse.dto.SseMessage;
 import com.sprint.mission.otboo.domain.weathernotification.sse.repository.SseEmitterRepository;
 import com.sprint.mission.otboo.domain.weathernotification.sse.repository.SseMessageRepository;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @RequiredArgsConstructor
@@ -30,14 +35,16 @@ public class SseService {
   // (X-Accel-Buffering: no 헤더 필요 여부도 nginx 경유 시 함께 확인)
   private static final long TIMEOUT = Duration.ofMinutes(30).toMillis();
   private static final String PING_EVENT_NAME = "ping";
+  private static final int LOCK_STRIPES = 256;
 
   private final SseEmitterRepository sseEmitterRepository;
   private final SseMessageRepository sseMessageRepository;
+  private final StringRedisTemplate stringRedisTemplate;
+  private final ObjectMapper objectMapper;
 
-  // 유저별 "emitter 등록 + 재생 스냅샷 확정"(connect)과 "메시지 저장 + 실시간 전송"(send)을
-  // 하나의 상태 전이로 묶기 위한 락. 이 락 없이 두 작업이 같은 유저에 대해 겹치면, 그 경계에
-  // 걸친 메시지가 실시간 전송과 재생에 모두 잡혀 중복 전송될 수 있다.
-  private final ConcurrentHashMap<UUID, ReentrantLock> connectionLocks = new ConcurrentHashMap<>();
+  private final ReentrantLock[] connectionLocks = Stream.generate(ReentrantLock::new)
+      .limit(LOCK_STRIPES)
+      .toArray(ReentrantLock[]::new);
 
   public SseEmitter connect(UUID userId, UUID lastEventId) {
     SseEmitter emitter = new SseEmitter(TIMEOUT);
@@ -49,8 +56,8 @@ public class SseService {
     ReentrantLock lock = lockFor(userId);
     lock.lock();
     try {
-      sseEmitterRepository.save(userId, emitter);
-      snapshotAt = sseMessageRepository.getLatestCreatedAt();
+      snapshotAt = lastEventId == null ? null : sseMessageRepository.getLatestCreatedAt();
+      sseEmitterRepository.save(userId, emitter, snapshotAt);
     } finally {
       lock.unlock();
     }
@@ -61,7 +68,7 @@ public class SseService {
 
     List<SseMessage> missed = sseMessageRepository.findAllAfter(lastEventId, userId);
     for (SseMessage message : missed) {
-      if (snapshotAt != null && message.createdAt().isAfter(snapshotAt)) {
+      if (snapshotAt != null && isAfterSnapshot(message.createdAt(), snapshotAt)) {
         break;
       }
       if (!sendToEmitter(emitter, message)) {
@@ -74,20 +81,47 @@ public class SseService {
   public void send(List<NotificationDto> notificationDtos, String eventName) {
     notificationDtos.forEach(dto -> {
       SseMessage message = new SseMessage(Set.of(dto.receiverId()), eventName, dto);
-      ReentrantLock lock = lockFor(dto.receiverId());
-      lock.lock();
+      sseMessageRepository.save(message);
+      stringRedisTemplate.convertAndSend(SseConfig.SSE_CHANNEL,
+          objectMapper.writeValueAsString(message));
+    });
+  }
+
+  public void deliverLocally(SseMessage message) {
+    message.receiverIds().forEach(receiverId -> {
       try {
-        sseMessageRepository.save(message);
-        sseEmitterRepository.findByUserId(dto.receiverId())
-            .ifPresent(emitter -> sendToEmitter(emitter, message));
-      } finally {
-        lock.unlock();
+        Optional<SseEmitter> emitter = resolveTargetEmitter(receiverId, message);
+        emitter.ifPresent(e -> sendToEmitter(e, message));
+      } catch (Exception e) {
+        log.error("SSE 로컬 전달 실패: messageId={}", message.id(), e);
       }
     });
   }
 
+  private Optional<SseEmitter> resolveTargetEmitter(UUID receiverId, SseMessage message) {
+    ReentrantLock lock = lockFor(receiverId);
+    lock.lock();
+    try {
+      Optional<Instant> snapshotAt = sseEmitterRepository.findSnapshotAt(receiverId);
+      boolean alreadyReplayed = snapshotAt
+          .filter(s -> !isAfterSnapshot(message.createdAt(), s))
+          .isPresent();
+      if (alreadyReplayed) {
+        return Optional.empty();
+      }
+      return sseEmitterRepository.findByUserId(receiverId);
+    } finally {
+      lock.unlock();
+    }
+  }
+
+  private boolean isAfterSnapshot(Instant createdAt, Instant snapshotAt) {
+    return createdAt.truncatedTo(ChronoUnit.MICROS).isAfter(snapshotAt);
+  }
+
   private ReentrantLock lockFor(UUID userId) {
-    return connectionLocks.computeIfAbsent(userId, id -> new ReentrantLock());
+    int index = Math.floorMod(userId.hashCode(), LOCK_STRIPES);
+    return connectionLocks[index];
   }
 
   public void disconnect(UUID userId) {
@@ -109,7 +143,7 @@ public class SseService {
           .data(message.data()));
       return true;
     } catch (IOException | IllegalStateException e) {
-      log.warn("sse send fail, closing emitter: messageId={}", message.id(), e);
+      log.warn("SSE 전송 실패, emitter를 종료한다: messageId={}", message.id(), e);
       emitter.completeWithError(e);
       return false;
     }

@@ -1,10 +1,13 @@
 package com.sprint.mission.otboo.domain.weathernotification.sse.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
@@ -12,13 +15,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.navercorp.fixturemonkey.FixtureMonkey;
+import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.sprint.mission.otboo.domain.weathernotification.notification.dto.NotificationDto;
+import com.sprint.mission.otboo.domain.weathernotification.sse.config.SseConfig;
 import com.sprint.mission.otboo.domain.weathernotification.sse.dto.SseMessage;
 import com.sprint.mission.otboo.domain.weathernotification.sse.repository.SseEmitterRepository;
 import com.sprint.mission.otboo.domain.weathernotification.sse.repository.SseMessageRepository;
-import com.sprint.mission.otboo.global.event.NotificationLevel;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,7 +36,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.junit.jupiter.api.AfterEach;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -37,7 +45,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 class SseServiceTest {
@@ -48,10 +58,17 @@ class SseServiceTest {
   private SseEmitterRepository sseEmitterRepository;
   @Mock
   private SseMessageRepository sseMessageRepository;
+  @Mock
+  private StringRedisTemplate stringRedisTemplate;
+  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final FixtureMonkey fm = FixtureMonkey.builder()
+      .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
+      .build();
 
   @BeforeEach
   void setUp() {
-    sseService = new SseService(sseEmitterRepository, sseMessageRepository);
+    sseService = new SseService(sseEmitterRepository, sseMessageRepository, stringRedisTemplate,
+        objectMapper);
   }
 
   @Nested
@@ -63,7 +80,6 @@ class SseServiceTest {
     void emitter를_생성해_repository에_등록하고_생성한_emitter를_반환한다() {
       // given
       UUID userId = UUID.randomUUID();
-      given(sseMessageRepository.getLatestCreatedAt()).willReturn(null);
       given(sseMessageRepository.findAllAfter(isNull(), eq(userId))).willReturn(List.of());
 
       try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class)) {
@@ -73,7 +89,24 @@ class SseServiceTest {
         // then
         SseEmitter createdEmitter = mocked.constructed().get(0);
         assertThat(result).isSameAs(createdEmitter);
-        verify(sseEmitterRepository).save(userId, createdEmitter);
+        verify(sseEmitterRepository).save(userId, createdEmitter, null);
+      }
+    }
+
+    @Test
+    @DisplayName("lastEventId가_없으면_재생_버퍼_조회_없이_스냅샷을_null로_둔다")
+    void lastEventId가_없으면_재생_버퍼_조회_없이_스냅샷을_null로_둔다() {
+      // given — 최초 연결이라 재생 대상 자체가 없다
+      UUID userId = UUID.randomUUID();
+
+      try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class)) {
+        // when
+        sseService.connect(userId, null);
+
+        // then — 재생이 일어나지 않으므로 스냅샷도 null이어야 실시간 전달이 스킵되지 않는다
+        SseEmitter createdEmitter = mocked.constructed().get(0);
+        verify(sseMessageRepository, never()).getLatestCreatedAt();
+        verify(sseEmitterRepository).save(userId, createdEmitter, null);
       }
     }
 
@@ -178,6 +211,32 @@ class SseServiceTest {
         verify(createdEmitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
       }
     }
+
+    @Test
+    @DisplayName("스냅샷을_만든_메시지_자신도_마이크로초_절삭_오차로_재생에서_빠지지_않는다")
+    void 스냅샷을_만든_메시지_자신도_마이크로초_절삭_오차로_재생에서_빠지지_않는다() throws IOException {
+      // given — Redis ZSet score는 마이크로초라 getLatestCreatedAt()이 돌려주는 스냅샷은
+      // 원본 createdAt의 서브마이크로초(나노초)가 잘린 값이다. 그 메시지 자신을 재생 대상과
+      // 비교할 때 절삭 오차로 "스냅샷 이후"로 오판되면 안 된다.
+      UUID userId = UUID.randomUUID();
+      UUID lastEventId = UUID.randomUUID();
+      Instant fullPrecision = Instant.parse("2026-01-01T00:00:00.123456789Z");
+      Instant truncatedSnapshot = fullPrecision.truncatedTo(ChronoUnit.MICROS);
+      SseMessage boundaryMessage = new SseMessage(UUID.randomUUID(), Set.of(userId),
+          "notifications", "payload", fullPrecision);
+      given(sseMessageRepository.getLatestCreatedAt()).willReturn(truncatedSnapshot);
+      given(sseMessageRepository.findAllAfter(lastEventId, userId))
+          .willReturn(List.of(boundaryMessage));
+
+      try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class)) {
+        // when
+        sseService.connect(userId, lastEventId);
+
+        // then — ping 1회 + boundaryMessage 재생 1회
+        SseEmitter createdEmitter = mocked.constructed().get(0);
+        verify(createdEmitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+      }
+    }
   }
 
   @Nested
@@ -259,116 +318,188 @@ class SseServiceTest {
   class Send {
 
     @Test
-    @DisplayName("dto를_메시지로_저장하고_수신자_emitter가_있으면_전송한다")
-    void dto를_메시지로_저장하고_수신자_emitter가_있으면_전송한다() throws IOException {
+    @DisplayName("메시지를_저장하고_Redis_채널에_발행한다")
+    void 메시지를_저장하고_Redis_채널에_발행한다() {
       // given
       UUID receiverId = UUID.randomUUID();
-      NotificationDto dto = new NotificationDto(
-          UUID.randomUUID(), Instant.now(), receiverId, "제목", "내용", NotificationLevel.INFO);
-      SseEmitter emitter = mock(SseEmitter.class);
-      given(sseEmitterRepository.findByUserId(receiverId)).willReturn(Optional.of(emitter));
+      NotificationDto dto = fm.giveMeBuilder(NotificationDto.class)
+          .set("receiverId", receiverId)
+          .sample();
 
       // when
       sseService.send(List.of(dto), "notifications");
 
       // then
       verify(sseMessageRepository).save(any(SseMessage.class));
-      verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+      verify(stringRedisTemplate).convertAndSend(eq(SseConfig.SSE_CHANNEL), anyString());
     }
 
     @Test
-    @DisplayName("수신자별로_각자_자기_emitter에만_개별_전송한다")
-    void 수신자별로_각자_자기_emitter에만_개별_전송한다() throws IOException {
+    @DisplayName("수신자별로_각각_메시지를_저장하고_발행한다")
+    void 수신자별로_각각_메시지를_저장하고_발행한다() {
       // given
       UUID receiverId1 = UUID.randomUUID();
       UUID receiverId2 = UUID.randomUUID();
-      NotificationDto dto1 = new NotificationDto(
-          UUID.randomUUID(), Instant.now(), receiverId1, "제목1", "내용1", NotificationLevel.INFO);
-      NotificationDto dto2 = new NotificationDto(
-          UUID.randomUUID(), Instant.now(), receiverId2, "제목2", "내용2", NotificationLevel.INFO);
-      SseEmitter emitter1 = mock(SseEmitter.class);
-      SseEmitter emitter2 = mock(SseEmitter.class);
-      given(sseEmitterRepository.findByUserId(receiverId1)).willReturn(Optional.of(emitter1));
-      given(sseEmitterRepository.findByUserId(receiverId2)).willReturn(Optional.of(emitter2));
+      NotificationDto dto1 = fm.giveMeBuilder(NotificationDto.class)
+          .set("receiverId", receiverId1)
+          .sample();
+      NotificationDto dto2 = fm.giveMeBuilder(NotificationDto.class)
+          .set("receiverId", receiverId2)
+          .sample();
 
       // when
       sseService.send(List.of(dto1, dto2), "notifications");
 
       // then
-      verify(emitter1).send(any(SseEmitter.SseEventBuilder.class));
-      verify(emitter2).send(any(SseEmitter.SseEventBuilder.class));
-    }
-
-    @Test
-    @DisplayName("수신자의_emitter가_없으면_저장만_하고_전송은_하지_않는다")
-    void 수신자의_emitter가_없으면_저장만_하고_전송은_하지_않는다() {
-      // given
-      UUID receiverId = UUID.randomUUID();
-      NotificationDto dto = new NotificationDto(
-          UUID.randomUUID(), Instant.now(), receiverId, "제목", "내용", NotificationLevel.INFO);
-      given(sseEmitterRepository.findByUserId(receiverId)).willReturn(Optional.empty());
-
-      // when
-      sseService.send(List.of(dto), "notifications");
-
-      // then
-      verify(sseMessageRepository).save(any(SseMessage.class));
+      verify(sseMessageRepository, times(2)).save(any(SseMessage.class));
+      verify(stringRedisTemplate, times(2)).convertAndSend(eq(SseConfig.SSE_CHANNEL), anyString());
     }
   }
 
   @Nested
-  @DisplayName("connect/send 동시성")
-  class ConnectSendConcurrency {
+  @DisplayName("로컬 전달(구독자 콜백)")
+  class DeliverLocally {
 
-    private ExecutorService executor;
+    @Test
+    @DisplayName("로컬에_연결된_emitter로_전송한다")
+    void 로컬에_연결된_emitter로_전송한다() throws IOException {
+      // given
+      UUID userId = UUID.randomUUID();
+      SseMessage message = new SseMessage(Set.of(userId), "notifications", "payload");
+      SseEmitter emitter = mock(SseEmitter.class);
+      given(sseEmitterRepository.findSnapshotAt(userId)).willReturn(Optional.empty());
+      given(sseEmitterRepository.findByUserId(userId)).willReturn(Optional.of(emitter));
 
-    @BeforeEach
-    void setUpExecutor() {
-      executor = Executors.newFixedThreadPool(2);
-    }
+      // when
+      sseService.deliverLocally(message);
 
-    @AfterEach
-    void tearDownExecutor() {
-      executor.shutdown();
+      // then
+      verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
     }
 
     @Test
-    @DisplayName("connect가_emitter_등록과_스냅샷_확정을_진행하는_동안_같은_유저의_send는_대기했다가_그_이후에_진행된다")
-    void connect가_emitter_등록과_스냅샷_확정을_진행하는_동안_같은_유저의_send는_대기했다가_그_이후에_진행된다()
-        throws Exception {
-      // given — snapshotAt 조회(getLatestCreatedAt) 시점에 connect를 멈춰 세워
-      // "emitter 등록 ~ 스냅샷 확정" 구간을 하나의 임계구역으로 붙잡아 둔다
+    @DisplayName("재생_스냅샷_이전_메시지는_중복_전송하지_않는다")
+    void 재생_스냅샷_이전_메시지는_중복_전송하지_않는다() {
+      // given — save()와 로컬 전송 사이 Pub/Sub 왕복 구간에 connect()가 끼어들어
+      // 이미 재생으로 처리된 것과 같은 메시지가 뒤늦게 도착하는 상황을 재현
       UUID userId = UUID.randomUUID();
-      CountDownLatch connectHoldingCriticalSection = new CountDownLatch(1);
-      CountDownLatch releaseConnect = new CountDownLatch(1);
-      given(sseMessageRepository.getLatestCreatedAt()).willAnswer(invocation -> {
-        connectHoldingCriticalSection.countDown();
-        releaseConnect.await();
+      Instant snapshotAt = Instant.now();
+      SseMessage alreadyReplayed = new SseMessage(
+          UUID.randomUUID(), Set.of(userId), "notifications", "payload",
+          snapshotAt.minusSeconds(1));
+      given(sseEmitterRepository.findSnapshotAt(userId)).willReturn(Optional.of(snapshotAt));
+
+      // when
+      sseService.deliverLocally(alreadyReplayed);
+
+      // then
+      verify(sseEmitterRepository, never()).findByUserId(userId);
+    }
+
+    @Test
+    @DisplayName("스냅샷을_만든_메시지_자신은_마이크로초_절삭_오차_없이_중복_전송하지_않는다")
+    void 스냅샷을_만든_메시지_자신은_마이크로초_절삭_오차_없이_중복_전송하지_않는다() {
+      // given — snapshotAt은 Redis에서 복원된 마이크로초 정밀도, message.createdAt()은
+      // 그 스냅샷을 만든 바로 그 메시지의 서브마이크로초(나노초) 포함 원본 시각
+      UUID userId = UUID.randomUUID();
+      Instant fullPrecision = Instant.parse("2026-01-01T00:00:00.123456789Z");
+      Instant truncatedSnapshot = fullPrecision.truncatedTo(ChronoUnit.MICROS);
+      SseMessage boundaryMessage = new SseMessage(
+          UUID.randomUUID(), Set.of(userId), "notifications", "payload", fullPrecision);
+      given(sseEmitterRepository.findSnapshotAt(userId)).willReturn(Optional.of(truncatedSnapshot));
+
+      // when
+      sseService.deliverLocally(boundaryMessage);
+
+      // then — connect() 재생으로 이미 처리된 것으로 간주해 로컬 전송하지 않는다
+      verify(sseEmitterRepository, never()).findByUserId(userId);
+    }
+
+    @Test
+    @DisplayName("emitter_전송_중에도_같은_유저의_다음_메시지_스냅샷_판정은_막히지_않는다")
+    void emitter_전송_중에도_같은_유저의_다음_메시지_스냅샷_판정은_막히지_않는다() throws Exception {
+      // given — message1의 emitter.send()를 인위적으로 블로킹시켜, 그 사이 message2의
+      // 스냅샷 판정(findSnapshotAt)이 락에 막히지 않고 진행되는지 확인한다
+      UUID userId = UUID.randomUUID();
+      SseMessage message1 = new SseMessage(Set.of(userId), "notifications", "payload1");
+      SseMessage message2 = new SseMessage(Set.of(userId), "notifications", "payload2");
+      SseEmitter blockingEmitter = mock(SseEmitter.class);
+      SseEmitter fastEmitter = mock(SseEmitter.class);
+      CountDownLatch sendStarted = new CountDownLatch(1);
+      CountDownLatch releaseSend = new CountDownLatch(1);
+      given(sseEmitterRepository.findSnapshotAt(userId)).willReturn(Optional.empty());
+      given(sseEmitterRepository.findByUserId(userId))
+          .willReturn(Optional.of(blockingEmitter), Optional.of(fastEmitter));
+      doAnswer(invocation -> {
+        sendStarted.countDown();
+        releaseSend.await();
         return null;
-      });
-      given(sseMessageRepository.findAllAfter(any(), any())).willReturn(List.of());
+      }).when(blockingEmitter).send(any(SseEmitter.SseEventBuilder.class));
 
-      try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class)) {
-        // when
-        Future<SseEmitter> connectFuture = executor.submit(() -> sseService.connect(userId, null));
-        connectHoldingCriticalSection.await();
+      ExecutorService executor = Executors.newFixedThreadPool(2);
+      try {
+        Future<?> future1 = executor.submit(() -> sseService.deliverLocally(message1));
+        assertThat(sendStarted.await(2, TimeUnit.SECONDS)).isTrue();
 
-        NotificationDto dto = new NotificationDto(
-            UUID.randomUUID(), Instant.now(), userId, "제목", "내용", NotificationLevel.INFO);
-        Future<?> sendFuture = executor.submit(() -> sseService.send(List.of(dto), "notifications"));
+        // when — message1의 emitter.send()가 아직 블로킹 중인 상태에서 message2를 처리
+        Future<?> future2 = executor.submit(() -> sseService.deliverLocally(message2));
 
-        // then — connect가 임계구역을 쥐고 있는 동안에는 send가 메시지를 저장하지 못하고 대기해야 한다
-        Thread.sleep(200);
-        verify(sseMessageRepository, never()).save(any(SseMessage.class));
+        // then — 락이 send() 전에 이미 풀렸다면 타임아웃 없이 바로 완료된다
+        future2.get(2, TimeUnit.SECONDS);
 
-        // when — connect를 마저 진행시키면
-        releaseConnect.countDown();
-        connectFuture.get();
-        sendFuture.get();
-
-        // then — 그제서야 send가 진행된다(emitter 등록·스냅샷 확정과 겹치지 않음)
-        verify(sseMessageRepository).save(any(SseMessage.class));
+        releaseSend.countDown();
+        future1.get(2, TimeUnit.SECONDS);
+      } finally {
+        releaseSend.countDown();
+        executor.shutdownNow();
+        assertThat(executor.awaitTermination(2, TimeUnit.SECONDS)).isTrue();
       }
+    }
+
+    @Test
+    @DisplayName("한_수신자_처리가_실패해도_예외를_전파하지_않고_나머지_수신자는_계속_전달한다")
+    void 한_수신자_처리가_실패해도_나머지_수신자는_계속_전달한다() throws IOException {
+      // given
+      UUID failingReceiverId = UUID.randomUUID();
+      UUID okReceiverId = UUID.randomUUID();
+      SseMessage message = new SseMessage(
+          Set.of(failingReceiverId, okReceiverId), "notifications", "payload");
+      SseEmitter okEmitter = mock(SseEmitter.class);
+      given(sseEmitterRepository.findSnapshotAt(failingReceiverId))
+          .willThrow(new RuntimeException("redis 장애"));
+      given(sseEmitterRepository.findSnapshotAt(okReceiverId)).willReturn(Optional.empty());
+      given(sseEmitterRepository.findByUserId(okReceiverId)).willReturn(Optional.of(okEmitter));
+
+      // when & then
+      assertThatCode(() -> sseService.deliverLocally(message)).doesNotThrowAnyException();
+      verify(okEmitter).send(any(SseEmitter.SseEventBuilder.class));
+    }
+  }
+
+  @Nested
+  @DisplayName("connectionLocks 스트라이핑")
+  class ConnectionLockStriping {
+
+    @Test
+    @DisplayName("같은_userId는_항상_같은_락을_반환하고_userId가_다양하면_여러_락으로_분산된다")
+    void 같은_userId는_항상_같은_락을_반환하고_userId가_다양하면_여러_락으로_분산된다()
+        throws Exception {
+      // given
+      Method lockForMethod = SseService.class.getDeclaredMethod("lockFor", UUID.class);
+      lockForMethod.setAccessible(true);
+      UUID fixedUserId = UUID.randomUUID();
+      Set<Object> distinctLocks = new HashSet<>();
+
+      // when
+      Object first = lockForMethod.invoke(sseService, fixedUserId);
+      Object second = lockForMethod.invoke(sseService, fixedUserId);
+      for (int i = 0; i < 1000; i++) {
+        distinctLocks.add(lockForMethod.invoke(sseService, UUID.randomUUID()));
+      }
+
+      // then
+      assertThat(first).isSameAs(second);
+      assertThat(distinctLocks.size()).isGreaterThan(200);
     }
   }
 }
