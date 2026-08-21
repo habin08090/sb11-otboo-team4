@@ -47,7 +47,7 @@ class LlmRecommendationFetcherTest {
   }
 
   @Nested
-  @DisplayName("Select")
+  @DisplayName("재선정 요청")
   class Select {
 
     @Test

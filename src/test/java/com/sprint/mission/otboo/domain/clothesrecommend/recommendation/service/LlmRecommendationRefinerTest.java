@@ -35,7 +35,7 @@ class LlmRecommendationRefinerTest {
   }
 
   @Nested
-  @DisplayName("Refine")
+  @DisplayName("재선정 검증")
   class Refine {
 
     @Test

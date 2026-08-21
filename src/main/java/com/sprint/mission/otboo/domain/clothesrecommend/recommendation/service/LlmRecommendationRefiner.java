@@ -30,7 +30,7 @@ public class LlmRecommendationRefiner {
     try {
       selected = llmRecommendationFetcher.select(context);
     } catch (LlmException e) {
-      log.warn("LLM 추천 재선정 실패, 규칙 기반 결과로 대체", e);
+      log.error("LLM 추천 재선정 실패, 규칙 기반 결과로 대체", e);
       return fallback;
     }
 
