@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -67,6 +69,26 @@ class LlmRecommendationFetcherTest {
       LlmSelectedClothes result = fetcher.select(context);
 
       assertThat(result).isEqualTo(selected);
+
+      ArgumentCaptor<LlmChatRequest> requestCaptor = ArgumentCaptor.forClass(LlmChatRequest.class);
+      verify(llmClient).chat(requestCaptor.capture());
+      LlmChatRequest sentRequest = requestCaptor.getValue();
+
+      assertThat(sentRequest.model()).isEqualTo("test-model");
+      assertThat(sentRequest.messages()).hasSize(2);
+      assertThat(sentRequest.messages().get(0).role()).isEqualTo("system");
+      assertThat(sentRequest.messages().get(1).role()).isEqualTo("user");
+
+      String userPrompt = sentRequest.messages().get(1).content();
+      assertThat(userPrompt)
+          .contains("5.0")
+          .contains("3.5")
+          .contains(PrecipitationType.RAIN.name())
+          .contains(WindStrength.STRONG.name())
+          .contains("3")
+          .contains(context.candidates().get(0).clothesId().toString())
+          .contains("패딩")
+          .contains(ClothesType.OUTER.name());
     }
 
     @Test
