@@ -24,7 +24,7 @@ class LlmRecommendationParserTest {
   }
 
   @Nested
-  @DisplayName("Parse")
+  @DisplayName("파싱")
   class Parse {
 
     @Test
@@ -92,6 +92,15 @@ class LlmRecommendationParserTest {
     @DisplayName("응답이_null이면_LlmApiException을_던진다")
     void 응답이_null이면_LlmApiException을_던진다() {
       assertThatThrownBy(() -> parser.parse(null))
+          .isInstanceOf(LlmApiException.class);
+    }
+
+    @Test
+    @DisplayName("clothesIds가_빈_배열이면_LlmApiException을_던진다")
+    void clothesIds가_빈_배열이면_LlmApiException을_던진다() {
+      LlmChatResponse response = response("{\"clothesIds\": []}");
+
+      assertThatThrownBy(() -> parser.parse(response))
           .isInstanceOf(LlmApiException.class);
     }
   }
