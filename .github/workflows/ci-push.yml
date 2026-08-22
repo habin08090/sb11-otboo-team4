@@ -2,9 +2,9 @@ name: CI (Push)
 
 on:
   push:
-    branches: [dev, main]
+    branches: [ dev, main ]
 
-permissions: {}
+permissions: { }
 
 jobs:
   codecov:
@@ -83,3 +83,27 @@ jobs:
           steps.run.outputs.id == 'null' ||
           steps.download.outcome != 'success'
         run: echo "No PR artifact found — Codecov upload skipped"
+
+  warm-es-cache:
+    name: Warm Elasticsearch image cache
+    if: github.event.repository.fork == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build & warm Elasticsearch image cache
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
+        with:
+          context: docker/elasticsearch
+          tags: otboo-es:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
