@@ -10,7 +10,11 @@ import com.sprint.mission.otboo.domain.social.common.dto.UserSummary;
 import com.sprint.mission.otboo.domain.social.common.repository.querydsl.impl.UserSummaryQueryRepositoryImpl;
 import com.sprint.mission.otboo.global.config.JpaConfig;
 import com.sprint.mission.otboo.global.config.QuerydslConfig;
+import com.sprint.mission.otboo.global.file.properties.FileImplType;
+import com.sprint.mission.otboo.global.file.properties.FileProperties;
+import com.sprint.mission.otboo.global.file.util.FileUrlResolver;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -19,6 +23,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -26,7 +32,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 @DataJpaTest
 @ActiveProfiles("test")
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({JpaConfig.class, QuerydslConfig.class, UserSummaryQueryRepositoryImpl.class})
+@Import({JpaConfig.class, QuerydslConfig.class, UserSummaryQueryRepositoryImpl.class,
+    UserSummaryQueryRepositoryImplTest.FileUrlResolverTestConfig.class})
 @DisplayName("UserSummaryQueryRepository")
 class UserSummaryQueryRepositoryImplTest {
 
@@ -35,6 +42,18 @@ class UserSummaryQueryRepositoryImplTest {
 
   @Autowired
   private TestEntityManager testEntityManager;
+
+  @TestConfiguration
+  static class FileUrlResolverTestConfig {
+
+    // FileProperties가 @ConfigurationProperties라 슬라이스 테스트에서 바인딩되지 않아 직접 생성한다.
+    @Bean
+    FileUrlResolver fileUrlResolver() {
+      return new FileUrlResolver(new FileProperties(
+          FileImplType.LOCAL, "http://localhost:8080/uploads", 5242880L, Set.of("jpg"),
+          new FileProperties.Local("uploads"), null));
+    }
+  }
 
   @Nested
   @DisplayName("findByUserId")
@@ -68,7 +87,7 @@ class UserSummaryQueryRepositoryImplTest {
       User user = User.create("otboo", "otboo@test.com", "encoded-password");
       testEntityManager.persist(user);
       Profile profile = Profile.create(user);
-      ReflectionTestUtils.setField(profile, "profileImageUrl", "https://img.url/otboo.png");
+      ReflectionTestUtils.setField(profile, "profileImageUrl", "profile/otboo.png");
       testEntityManager.persist(profile);
       testEntityManager.flush();
       testEntityManager.clear();
@@ -79,7 +98,8 @@ class UserSummaryQueryRepositoryImplTest {
       // then
       assertThat(result.userId()).isEqualTo(user.getId());
       assertThat(result.name()).isEqualTo("otboo");
-      assertThat(result.profileImageUrl()).isEqualTo("https://img.url/otboo.png");
+      assertThat(result.profileImageUrl())
+          .isEqualTo("http://localhost:8080/uploads/profile/otboo.png");
     }
 
     @Test
@@ -152,7 +172,26 @@ class UserSummaryQueryRepositoryImplTest {
           .extracting(UserSummary::userId)
           .containsExactlyInAnyOrder(user1.getId(), user2.getId());
     }
+
+    @Test
+    @DisplayName("프로필 이미지가 있으면 완전한 URL로 변환해 반환한다")
+    void 프로필_이미지가_있으면_완전한_URL로_변환해_반환한다() {
+      // given
+      User user = testEntityManager.persist(User.create("우디", "woody@otboo.io", "password"));
+      Profile profile = Profile.create(user);
+      ReflectionTestUtils.setField(profile, "profileImageUrl", "profile/woody.png");
+      testEntityManager.persist(profile);
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      List<UserSummary> result = userSummaryQueryRepository.findByUserIds(List.of(user.getId()));
+
+      // then
+      assertThat(result)
+          .singleElement()
+          .extracting(UserSummary::profileImageUrl)
+          .isEqualTo("http://localhost:8080/uploads/profile/woody.png");
+    }
   }
-
-
 }
