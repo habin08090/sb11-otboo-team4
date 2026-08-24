@@ -7,11 +7,11 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
-@DisplayName("LlmApiException")
+@DisplayName("LLM API 예외")
 class LlmApiExceptionTest {
 
   @Nested
-  @DisplayName("Factory")
+  @DisplayName("팩토리")
   class Factory {
 
     @Test

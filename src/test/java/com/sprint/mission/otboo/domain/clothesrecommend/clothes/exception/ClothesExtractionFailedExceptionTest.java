@@ -8,11 +8,11 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
-@DisplayName("ClothesExtractionFailedException")
+@DisplayName("의상 추출 실패 예외")
 class ClothesExtractionFailedExceptionTest {
 
   @Nested
-  @DisplayName("Factory")
+  @DisplayName("팩토리")
   class Factory {
 
     @Test

@@ -8,11 +8,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("ClothesAttribute")
+@DisplayName("의상 속성")
 class ClothesAttributeTest {
 
   @Nested
-  @DisplayName("Create")
+  @DisplayName("생성")
   class Create {
 
     @Test

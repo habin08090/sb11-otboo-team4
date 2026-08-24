@@ -9,6 +9,8 @@ import com.sprint.mission.otboo.domain.clothesrecommend.clothes.repository.Cloth
 import com.sprint.mission.otboo.global.config.JpaConfig;
 import com.sprint.mission.otboo.global.config.QuerydslConfig;
 import com.sprint.mission.otboo.global.dto.CursorPageResponse;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +41,14 @@ class ClothesCustomRepositoryImplTest {
     return new ClothesListParams(cursor, idAfter, limit, type, ownerId);
   }
 
+  private void setCreatedAt(UUID clothesId, Instant createdAt) {
+    testEntityManager.getEntityManager()
+        .createNativeQuery("update clothes set created_at = :createdAt where id = :id")
+        .setParameter("createdAt", createdAt)
+        .setParameter("id", clothesId)
+        .executeUpdate();
+  }
+
   @Nested
   @DisplayName("FindByCursor")
   class FindByCursor {
@@ -48,10 +58,7 @@ class ClothesCustomRepositoryImplTest {
     void 첫_페이지_조회_시_최신순으로_limit개를_반환하고_hasNext를_표시한다() {
       // given
       UUID ownerId = UUID.randomUUID();
-      for (int i = 0; i < 5; i++) {
-        clothesRepository.save(Clothes.create(ownerId, "옷" + i, ClothesType.TOP));
-      }
-      testEntityManager.flush();
+      List<UUID> ids = createClothesWithAscendingCreatedAt(ownerId, 5);
       testEntityManager.clear();
 
       // when
@@ -60,21 +67,20 @@ class ClothesCustomRepositoryImplTest {
 
       // then
       assertThat(result.data()).hasSize(3);
+      assertThat(result.data()).extracting(Clothes::getId)
+          .containsExactly(ids.get(4), ids.get(3), ids.get(2));
       assertThat(result.hasNext()).isTrue();
       assertThat(result.totalCount()).isEqualTo(5L);
       assertThat(result.nextCursor()).isNotNull();
-      assertThat(result.nextIdAfter()).isNotNull();
+      assertThat(result.nextIdAfter()).isEqualTo(ids.get(2));
     }
 
     @Test
-    @DisplayName("커서를 넘기면 다음 페이지를 이어서 반환한다")
-    void 커서를_넘기면_다음_페이지를_이어서_반환한다() {
+    @DisplayName("커서를 넘기면 다음 페이지를 최신순으로 이어서 반환한다")
+    void 커서를_넘기면_다음_페이지를_최신순으로_이어서_반환한다() {
       // given
       UUID ownerId = UUID.randomUUID();
-      for (int i = 0; i < 5; i++) {
-        clothesRepository.save(Clothes.create(ownerId, "옷" + i, ClothesType.TOP));
-      }
-      testEntityManager.flush();
+      List<UUID> ids = createClothesWithAscendingCreatedAt(ownerId, 5);
       testEntityManager.clear();
 
       CursorPageResponse<Clothes> firstPage =
@@ -85,11 +91,23 @@ class ClothesCustomRepositoryImplTest {
           params(ownerId, 3, null, firstPage.nextCursor(), firstPage.nextIdAfter()));
 
       // then
-      assertThat(secondPage.data()).hasSize(2);
+      assertThat(secondPage.data()).extracting(Clothes::getId)
+          .containsExactly(ids.get(1), ids.get(0));
       assertThat(secondPage.hasNext()).isFalse();
-      List<UUID> firstPageIds = firstPage.data().stream().map(Clothes::getId).toList();
-      List<UUID> secondPageIds = secondPage.data().stream().map(Clothes::getId).toList();
-      assertThat(secondPageIds).doesNotContainAnyElementsOf(firstPageIds);
+    }
+
+    private List<UUID> createClothesWithAscendingCreatedAt(UUID ownerId, int count) {
+      List<UUID> ids = new ArrayList<>();
+      for (int i = 0; i < count; i++) {
+        Clothes clothes = clothesRepository.save(Clothes.create(ownerId, "옷" + i, ClothesType.TOP));
+        ids.add(clothes.getId());
+      }
+      testEntityManager.flush();
+      for (int i = 0; i < count; i++) {
+        setCreatedAt(ids.get(i), Instant.parse("2026-08-20T00:00:00Z").plusSeconds(i));
+      }
+      testEntityManager.flush();
+      return ids;
     }
 
     @Test
@@ -122,8 +140,10 @@ class ClothesCustomRepositoryImplTest {
     void 타입을_지정하면_해당_타입의_의상만_반환한다() {
       // given
       UUID ownerId = UUID.randomUUID();
+      UUID otherOwnerId = UUID.randomUUID();
       clothesRepository.save(Clothes.create(ownerId, "상의", ClothesType.TOP));
       clothesRepository.save(Clothes.create(ownerId, "하의", ClothesType.BOTTOM));
+      clothesRepository.save(Clothes.create(otherOwnerId, "남의 상의", ClothesType.TOP));
       testEntityManager.flush();
       testEntityManager.clear();
 
@@ -134,6 +154,7 @@ class ClothesCustomRepositoryImplTest {
       // then
       assertThat(result.data()).hasSize(1);
       assertThat(result.data().get(0).getType()).isEqualTo(ClothesType.TOP);
+      assertThat(result.data().get(0).getOwnerId()).isEqualTo(ownerId);
       assertThat(result.totalCount()).isEqualTo(1L);
     }
 

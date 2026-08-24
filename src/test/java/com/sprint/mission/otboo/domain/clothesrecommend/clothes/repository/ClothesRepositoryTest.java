@@ -84,9 +84,11 @@ class ClothesRepositoryTest {
     void 지정한_타입_목록에_속한_활성_의상만_반환한다() {
       // given
       UUID ownerId = UUID.randomUUID();
+      UUID otherOwnerId = UUID.randomUUID();
       clothesRepository.save(Clothes.create(ownerId, "상의", ClothesType.TOP));
       clothesRepository.save(Clothes.create(ownerId, "하의", ClothesType.BOTTOM));
       clothesRepository.save(Clothes.create(ownerId, "모자", ClothesType.HAT));
+      clothesRepository.save(Clothes.create(otherOwnerId, "남의 상의", ClothesType.TOP));
       testEntityManager.flush();
       testEntityManager.clear();
 
@@ -98,6 +100,7 @@ class ClothesRepositoryTest {
       assertThat(result).hasSize(2)
           .extracting(Clothes::getType)
           .containsExactlyInAnyOrder(ClothesType.TOP, ClothesType.BOTTOM);
+      assertThat(result).extracting(Clothes::getOwnerId).containsOnly(ownerId);
     }
 
     @Test

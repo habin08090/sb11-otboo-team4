@@ -8,11 +8,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("Clothes")
+@DisplayName("의상")
 class ClothesTest {
 
   @Nested
-  @DisplayName("Create")
+  @DisplayName("생성")
   class Create {
 
     @Test
@@ -35,7 +35,7 @@ class ClothesTest {
   }
 
   @Nested
-  @DisplayName("ChangeName")
+  @DisplayName("이름 변경")
   class ChangeName {
 
     @Test
@@ -53,7 +53,7 @@ class ClothesTest {
   }
 
   @Nested
-  @DisplayName("ChangeType")
+  @DisplayName("타입 변경")
   class ChangeType {
 
     @Test
@@ -71,7 +71,7 @@ class ClothesTest {
   }
 
   @Nested
-  @DisplayName("ChangeImageUrl")
+  @DisplayName("이미지 URL 변경")
   class ChangeImageUrl {
 
     @Test
@@ -89,7 +89,7 @@ class ClothesTest {
   }
 
   @Nested
-  @DisplayName("Delete")
+  @DisplayName("삭제")
   class Delete {
 
     @Test

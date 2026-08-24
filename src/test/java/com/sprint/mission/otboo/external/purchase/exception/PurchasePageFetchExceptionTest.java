@@ -7,11 +7,11 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
-@DisplayName("PurchasePageFetchException")
+@DisplayName("구매 페이지 조회 실패 예외")
 class PurchasePageFetchExceptionTest {
 
   @Nested
-  @DisplayName("Factory")
+  @DisplayName("팩토리")
   class Factory {
 
     @Test
