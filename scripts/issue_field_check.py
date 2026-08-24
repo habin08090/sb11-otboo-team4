@@ -284,11 +284,17 @@ def build_message(sections):
 def send_all(recipients):
     for key, sections in recipients.items():
         message = build_message(sections)
-        if key is None:
-            s.send_webhook(message)
-        else:
-            entry = s.DISCORD_USER_MAP[key]
-            s.send_dm_to_discord_id(entry["discord_id"], message)
+        try:
+            if key is None:
+                s.send_webhook(message)
+            else:
+                entry = s.DISCORD_USER_MAP[key]
+                s.send_dm_to_discord_id(entry["discord_id"], message)
+        except requests.RequestException as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            print(f"FAIL notify {key or '(webhook)'}: {type(exc).__name__} (status={status})")
+        except KeyError as exc:
+            print(f"FAIL notify {key or '(webhook)'}: missing key {exc}")
 
 
 def main():

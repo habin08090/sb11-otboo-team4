@@ -1030,12 +1030,19 @@ public class FeedMapper {
 > STOMP 메시지 처리 중 발생한 예외는 `global/exception/StompExceptionHandler`가 처리합니다.
 > ERROR 프레임은 STOMP 명세상 연결 종료를 수반하므로, 애플리케이션 검증 실패로 소켓이 끊기지 않도록
 > `@SendToUser`로 에러 채널에 전달합니다.
+>
+> DM은 Redis Pub/Sub으로 인스턴스 간 전파합니다. 컨트롤러가 `SimpMessagingTemplate`으로 직접 보내지
+> 않고 `dm:messages` 채널에 발행하면, 모든 인스턴스의 `DirectMessageRedisListener`가 구독 콜백에서
+> 각자의 SimpleBroker로 전달합니다. 발행한 인스턴스도 구독자로서 되돌려 받으므로 로컬·원격 경로가
+> 하나로 통일되고 중복 방지 로직이 필요 없습니다. SSE(`sse:notifications`)와 같은 방식입니다.
 
 ```java
 
 // global/config/StompDestinations.java : prefix 단일 출처
 // global/config/WebSocketConfig.java : STOMP 엔드포인트 /ws, CONNECT 인증·SUBSCRIBE 인가(ChannelInterceptor)
 // domain/social/directmessage/util/StompDestinationUtil.java : destination 생성·검증
+// domain/social/directmessage/config/DirectMessageRedisConfig.java : dm:messages 채널·리스너 컨테이너
+// domain/social/directmessage/listener/DirectMessageRedisListener.java : 구독 후 로컬 브로커로 전달
 
 @MessageMapping("/direct-messages_send")
 public void send(@Valid DirectMessageSendRequest request, Principal principal) {
@@ -1044,7 +1051,8 @@ public void send(@Valid DirectMessageSendRequest request, Principal principal) {
 
   String destination = StompDestinationUtil.directMessageDestination(
       saved.sender().userId(), saved.receiver().userId());
-  messagingTemplate.convertAndSend(destination, saved);
+  stringRedisTemplate.convertAndSend(DirectMessageRedisConfig.DM_CHANNEL,
+      objectMapper.writeValueAsString(new DirectMessageBroadcast(destination, saved)));
 }
 ```
 

@@ -91,4 +91,25 @@ class AsyncConfigTest {
       assertThat(captured.get(5, TimeUnit.SECONDS)).isEqualTo(requestId);
     }
   }
+
+  @Nested
+  @DisplayName("dmListenerExecutor")
+  class DmListenerExecutor {
+
+    @Test
+    @DisplayName("호출 스레드의 MDC를 실행 스레드로 전파한다")
+    void 호출_스레드의_MDC를_실행_스레드로_전파한다() throws Exception {
+      // given
+      String requestId = UUID.randomUUID().toString();
+      CompletableFuture<String> captured = new CompletableFuture<>();
+      executor = (ThreadPoolTaskExecutor) asyncConfig.dmListenerExecutor();
+
+      // when
+      MDC.put("requestId", requestId);
+      executor.execute(() -> captured.complete(MDC.get("requestId")));
+
+      // then
+      assertThat(captured.get(5, TimeUnit.SECONDS)).isEqualTo(requestId);
+    }
+  }
 }

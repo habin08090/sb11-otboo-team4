@@ -1,5 +1,7 @@
 package com.sprint.mission.otboo.domain.social.directmessage.controller;
 
+import com.sprint.mission.otboo.domain.social.directmessage.config.DirectMessageRedisConfig;
+import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageBroadcast;
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageDto;
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageSendRequest;
 import com.sprint.mission.otboo.domain.social.directmessage.exception.DirectMessageUnauthorizedException;
@@ -11,10 +13,11 @@ import java.security.Principal;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.handler.annotation.MessageMapping;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Controller
@@ -22,7 +25,8 @@ import org.springframework.stereotype.Controller;
 public class DirectMessageStompController {
 
   private final DirectMessageService directMessageService;
-  private final SimpMessagingTemplate messagingTemplate;
+  private final StringRedisTemplate stringRedisTemplate;
+  private final ObjectMapper objectMapper;
 
   @MessageMapping("/direct-messages_send")
   public void send(@Valid DirectMessageSendRequest request, Principal principal) {
@@ -33,7 +37,8 @@ public class DirectMessageStompController {
 
     String destination = StompDestinationUtil.directMessageDestination(
         saved.sender().userId(), saved.receiver().userId());
-    messagingTemplate.convertAndSend(destination, saved);
+    stringRedisTemplate.convertAndSend(DirectMessageRedisConfig.DM_CHANNEL,
+        objectMapper.writeValueAsString(new DirectMessageBroadcast(destination, saved)));
   }
 
   private UUID extractUserId(Principal principal) {

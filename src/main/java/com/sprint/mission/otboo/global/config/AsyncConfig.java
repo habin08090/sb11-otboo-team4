@@ -1,6 +1,7 @@
 package com.sprint.mission.otboo.global.config;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadPoolExecutor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.context.annotation.Bean;
@@ -66,6 +67,23 @@ public class AsyncConfig implements AsyncConfigurer {
     executor.setQueueCapacity(100);
     executor.setThreadNamePrefix("sse-listener-");
     executor.setTaskDecorator(new MdcTaskDecorator());
+    executor.initialize();
+    return executor;
+  }
+
+  @Bean(name = "dmListenerExecutor")
+  public Executor dmListenerExecutor() {
+    // TODO: 현재 아래 설정은 임시 값. 팀 논의 필요 지점
+    // sseListenerExecutor와 분리 — SSE 구독 콜백 지연이 DM 전파를 막지 않게 함
+    ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+    executor.setCorePoolSize(4);
+    executor.setMaxPoolSize(4);
+    executor.setQueueCapacity(100);
+    executor.setThreadNamePrefix("dm-listener-");
+    executor.setTaskDecorator(new MdcTaskDecorator());
+    // 큐가 차면 기본 AbortPolicy가 태스크를 버려 DM이 조용히 유실된다.
+    // Redis 구독 스레드에서 직접 실행해 백프레셔를 건다.
+    executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
     executor.initialize();
     return executor;
   }

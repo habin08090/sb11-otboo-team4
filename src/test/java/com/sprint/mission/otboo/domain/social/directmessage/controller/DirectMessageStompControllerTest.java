@@ -1,5 +1,6 @@
 package com.sprint.mission.otboo.domain.social.directmessage.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -10,6 +11,8 @@ import com.navercorp.fixturemonkey.FixtureMonkey;
 import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.navercorp.fixturemonkey.jakarta.validation.plugin.JakartaValidationPlugin;
 import com.sprint.mission.otboo.domain.social.common.dto.UserSummary;
+import com.sprint.mission.otboo.domain.social.directmessage.config.DirectMessageRedisConfig;
+import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageBroadcast;
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageDto;
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageSendRequest;
 import com.sprint.mission.otboo.domain.social.directmessage.exception.DirectMessageUnauthorizedException;
@@ -23,13 +26,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import tools.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("DirectMessageStompController")
@@ -47,7 +53,10 @@ class DirectMessageStompControllerTest {
   private DirectMessageService directMessageService;
 
   @Mock
-  private SimpMessagingTemplate messagingTemplate;
+  private StringRedisTemplate stringRedisTemplate;
+
+  @Spy
+  private ObjectMapper objectMapper = new ObjectMapper();
 
   private Authentication authenticationOf(UUID userId) {
     UserPrincipal principal = new UserPrincipal(userId, "USER");
@@ -84,10 +93,16 @@ class DirectMessageStompControllerTest {
 
       // then
       verify(directMessageService).send(request, senderId);
-      verify(messagingTemplate).convertAndSend(
+      ArgumentCaptor<String> captor = ArgumentCaptor.forClass(String.class);
+      verify(stringRedisTemplate)
+          .convertAndSend(eq(DirectMessageRedisConfig.DM_CHANNEL), captor.capture());
+
+      DirectMessageBroadcast published =
+          objectMapper.readValue(captor.getValue(), DirectMessageBroadcast.class);
+      assertThat(published.destination()).isEqualTo(
           "/sub/direct-messages_11111111-1111-1111-1111-111111111111"
-              + "_99999999-9999-9999-9999-999999999999",
-          saved);
+              + "_99999999-9999-9999-9999-999999999999");
+      assertThat(published.message()).isEqualTo(saved);
     }
 
     @Test
