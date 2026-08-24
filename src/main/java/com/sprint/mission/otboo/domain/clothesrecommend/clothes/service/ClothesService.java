@@ -53,12 +53,12 @@ public class ClothesService {
     Clothes clothes = clothesRepository.save(
         Clothes.create(request.ownerId(), request.name(), request.type()));
 
+    List<ClothesAttribute> savedAttributes = saveAttributes(clothes.getId(),
+        request.attributes());
+
     if (image != null && !image.isEmpty()) {
       clothes.changeImageUrl(fileStorageService.store(image, IMAGE_DOMAIN));
     }
-
-    List<ClothesAttribute> savedAttributes = saveAttributes(clothes.getId(),
-        request.attributes());
 
     Map<UUID, List<ClothesAttributeDefValue>> defValuesByDefId =
         loadDefValues(savedAttributes);
@@ -141,12 +141,6 @@ public class ClothesService {
       clothes.changeType(request.type());
     }
 
-    if (image != null && !image.isEmpty()) {
-      String oldImageUrl = clothes.getImageUrl();
-      clothes.changeImageUrl(fileStorageService.store(image, IMAGE_DOMAIN));
-      fileStorageService.delete(oldImageUrl);
-    }
-
     List<ClothesAttribute> savedAttributes;
     if (request.attributes() != null) {
       clothesAttributeRepository.deleteAllByClothesId(clothesId);
@@ -154,6 +148,12 @@ public class ClothesService {
     } else {
       savedAttributes = clothesAttributeRepository
           .findAllByClothesIdWithDefinition(clothesId);
+    }
+
+    if (image != null && !image.isEmpty()) {
+      String oldImageUrl = clothes.getImageUrl();
+      clothes.changeImageUrl(fileStorageService.store(image, IMAGE_DOMAIN));
+      fileStorageService.delete(oldImageUrl);
     }
 
     Map<UUID, List<ClothesAttributeDefValue>> defValuesByDefId =
