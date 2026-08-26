@@ -281,7 +281,8 @@ class RecommendationCacheStoreTest implements RedisTestContainerSupport {
       // then
       assertThat(count(RecommendationCacheMetrics.HIT)).isEqualTo(1.0);
       assertThat(count(RecommendationCacheMetrics.MISS)).isZero();
-      assertThat(count(RecommendationCacheMetrics.ERROR)).isZero();
+      assertThat(count(RecommendationCacheMetrics.LOOKUP_ERROR)).isZero();
+      assertThat(count(RecommendationCacheMetrics.SAVE_ERROR)).isZero();
     }
 
     @Test
@@ -296,8 +297,8 @@ class RecommendationCacheStoreTest implements RedisTestContainerSupport {
     }
 
     @Test
-    @DisplayName("저장된_값이_깨져있으면_error_카운터가_증가한다")
-    void 저장된_값이_깨져있으면_error_카운터가_증가한다() {
+    @DisplayName("저장된_값이_깨져있으면_조회_오류_카운터가_증가한다")
+    void 저장된_값이_깨져있으면_조회_오류_카운터가_증가한다() {
       // given
       cacheStore.save(defaultContext(), List.of(TOP_ID));
       String key = redisTemplate.keys(RecommendationCacheStore.KEY_PREFIX + "*")
@@ -308,13 +309,14 @@ class RecommendationCacheStoreTest implements RedisTestContainerSupport {
       cacheStore.find(defaultContext());
 
       // then
-      assertThat(count(RecommendationCacheMetrics.ERROR)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.LOOKUP_ERROR)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.SAVE_ERROR)).isZero();
       assertThat(count(RecommendationCacheMetrics.HIT)).isZero();
     }
 
     @Test
-    @DisplayName("Redis_조회가_실패하면_error_카운터가_증가한다")
-    void Redis_조회가_실패하면_error_카운터가_증가한다() {
+    @DisplayName("Redis_조회가_실패하면_조회_오류_카운터만_증가한다")
+    void Redis_조회가_실패하면_조회_오류_카운터만_증가한다() {
       // given
       StringRedisTemplate failingTemplate = mock(StringRedisTemplate.class);
       @SuppressWarnings("unchecked")
@@ -329,8 +331,58 @@ class RecommendationCacheStoreTest implements RedisTestContainerSupport {
       failingStore.find(defaultContext());
 
       // then
-      assertThat(count(RecommendationCacheMetrics.ERROR)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.LOOKUP_ERROR)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.SAVE_ERROR)).isZero();
       assertThat(count(RecommendationCacheMetrics.MISS)).isZero();
+    }
+
+    @Test
+    @DisplayName("Redis_저장이_실패하면_저장_오류_카운터만_증가한다")
+    void Redis_저장이_실패하면_저장_오류_카운터만_증가한다() {
+      // given
+      StringRedisTemplate failingTemplate = mock(StringRedisTemplate.class);
+      @SuppressWarnings("unchecked")
+      ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+      given(failingTemplate.opsForValue()).willReturn(valueOps);
+      willThrow(new RedisConnectionFailureException("redis down"))
+          .given(valueOps).set(anyString(), anyString(), any(Duration.class));
+      RecommendationCacheStore failingStore = new RecommendationCacheStore(
+          failingTemplate, new ObjectMapper(), new RecommendationCacheMetrics(meterRegistry));
+
+      // when
+      failingStore.save(defaultContext(), List.of(TOP_ID));
+
+      // then
+      assertThat(count(RecommendationCacheMetrics.SAVE_ERROR)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.LOOKUP_ERROR)).isZero();
+      assertThat(count(RecommendationCacheMetrics.MISS)).isZero();
+    }
+
+    @Test
+    @DisplayName("미적중_뒤_저장이_실패해도_히트율_분모가_중복되지_않는다")
+    void 미적중_뒤_저장이_실패해도_히트율_분모가_중복되지_않는다() {
+      // given — 조회는 정상(미적중), 저장만 실패하는 상황
+      StringRedisTemplate partiallyFailingTemplate = mock(StringRedisTemplate.class);
+      @SuppressWarnings("unchecked")
+      ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+      given(partiallyFailingTemplate.opsForValue()).willReturn(valueOps);
+      given(valueOps.get(anyString())).willReturn(null);
+      willThrow(new RedisConnectionFailureException("redis down"))
+          .given(valueOps).set(anyString(), anyString(), any(Duration.class));
+      RecommendationCacheStore store = new RecommendationCacheStore(
+          partiallyFailingTemplate, new ObjectMapper(),
+          new RecommendationCacheMetrics(meterRegistry));
+
+      // when — 요청 한 건: 조회 미적중 후 저장 실패
+      store.find(defaultContext());
+      store.save(defaultContext(), List.of(TOP_ID));
+
+      // then — 히트율 분모(hit + miss + lookupError)에 이 요청이 한 번만 잡힌다
+      double denominator = count(RecommendationCacheMetrics.HIT)
+          + count(RecommendationCacheMetrics.MISS)
+          + count(RecommendationCacheMetrics.LOOKUP_ERROR);
+      assertThat(denominator).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.SAVE_ERROR)).isEqualTo(1.0);
     }
   }
 }
