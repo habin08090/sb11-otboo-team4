@@ -9,11 +9,14 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
+import com.sprint.mission.otboo.domain.clothesrecommend.recommendation.metrics.RecommendationCacheMetrics;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.WindStrength;
 import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationCandidate;
 import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationContext;
 import com.sprint.mission.otboo.global.testcontainers.RedisTestContainerSupport;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +44,7 @@ class RecommendationCacheStoreTest implements RedisTestContainerSupport {
   static StringRedisTemplate redisTemplate;
 
   private RecommendationCacheStore cacheStore;
+  private MeterRegistry meterRegistry;
 
   @BeforeAll
   static void setUpRedis() {
@@ -62,7 +66,13 @@ class RecommendationCacheStoreTest implements RedisTestContainerSupport {
     if (keys != null && !keys.isEmpty()) {
       redisTemplate.delete(keys);
     }
-    cacheStore = new RecommendationCacheStore(redisTemplate, new ObjectMapper());
+    meterRegistry = new SimpleMeterRegistry();
+    cacheStore = new RecommendationCacheStore(
+        redisTemplate, new ObjectMapper(), new RecommendationCacheMetrics(meterRegistry));
+  }
+
+  private double count(String meterName) {
+    return meterRegistry.counter(meterName).count();
   }
 
   private LlmRecommendationCandidate candidate(UUID id, String name, ClothesType type) {
@@ -226,8 +236,8 @@ class RecommendationCacheStoreTest implements RedisTestContainerSupport {
       given(failingTemplate.opsForValue()).willReturn(valueOps);
       given(valueOps.get(anyString()))
           .willThrow(new RedisConnectionFailureException("redis down"));
-      RecommendationCacheStore failingStore =
-          new RecommendationCacheStore(failingTemplate, new ObjectMapper());
+      RecommendationCacheStore failingStore = new RecommendationCacheStore(
+          failingTemplate, new ObjectMapper(), new RecommendationCacheMetrics(meterRegistry));
 
       // when
       Optional<List<UUID>> found = failingStore.find(defaultContext());
@@ -246,12 +256,81 @@ class RecommendationCacheStoreTest implements RedisTestContainerSupport {
       given(failingTemplate.opsForValue()).willReturn(valueOps);
       willThrow(new RedisConnectionFailureException("redis down"))
           .given(valueOps).set(anyString(), anyString(), any(Duration.class));
-      RecommendationCacheStore failingStore =
-          new RecommendationCacheStore(failingTemplate, new ObjectMapper());
+      RecommendationCacheStore failingStore = new RecommendationCacheStore(
+          failingTemplate, new ObjectMapper(), new RecommendationCacheMetrics(meterRegistry));
 
       // when & then
       assertThatCode(() -> failingStore.save(defaultContext(), List.of(TOP_ID)))
           .doesNotThrowAnyException();
+    }
+  }
+
+  @Nested
+  @DisplayName("캐시 계측")
+  class Metrics {
+
+    @Test
+    @DisplayName("캐시에_적중하면_hit_카운터가_증가한다")
+    void 캐시에_적중하면_hit_카운터가_증가한다() {
+      // given
+      cacheStore.save(defaultContext(), List.of(TOP_ID, BOTTOM_ID));
+
+      // when
+      cacheStore.find(defaultContext());
+
+      // then
+      assertThat(count(RecommendationCacheMetrics.HIT)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.MISS)).isZero();
+      assertThat(count(RecommendationCacheMetrics.ERROR)).isZero();
+    }
+
+    @Test
+    @DisplayName("캐시에_값이_없으면_miss_카운터가_증가한다")
+    void 캐시에_값이_없으면_miss_카운터가_증가한다() {
+      // when
+      cacheStore.find(defaultContext());
+
+      // then
+      assertThat(count(RecommendationCacheMetrics.MISS)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.HIT)).isZero();
+    }
+
+    @Test
+    @DisplayName("저장된_값이_깨져있으면_error_카운터가_증가한다")
+    void 저장된_값이_깨져있으면_error_카운터가_증가한다() {
+      // given
+      cacheStore.save(defaultContext(), List.of(TOP_ID));
+      String key = redisTemplate.keys(RecommendationCacheStore.KEY_PREFIX + "*")
+          .iterator().next();
+      redisTemplate.opsForValue().set(key, "{깨진 JSON");
+
+      // when
+      cacheStore.find(defaultContext());
+
+      // then
+      assertThat(count(RecommendationCacheMetrics.ERROR)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.HIT)).isZero();
+    }
+
+    @Test
+    @DisplayName("Redis_조회가_실패하면_error_카운터가_증가한다")
+    void Redis_조회가_실패하면_error_카운터가_증가한다() {
+      // given
+      StringRedisTemplate failingTemplate = mock(StringRedisTemplate.class);
+      @SuppressWarnings("unchecked")
+      ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+      given(failingTemplate.opsForValue()).willReturn(valueOps);
+      given(valueOps.get(anyString()))
+          .willThrow(new RedisConnectionFailureException("redis down"));
+      RecommendationCacheStore failingStore = new RecommendationCacheStore(
+          failingTemplate, new ObjectMapper(), new RecommendationCacheMetrics(meterRegistry));
+
+      // when
+      failingStore.find(defaultContext());
+
+      // then
+      assertThat(count(RecommendationCacheMetrics.ERROR)).isEqualTo(1.0);
+      assertThat(count(RecommendationCacheMetrics.MISS)).isZero();
     }
   }
 }
