@@ -1,6 +1,5 @@
 package com.sprint.mission.otboo.domain.weathernotification.notification.entity;
 
-import com.sprint.mission.otboo.global.event.NotificationLevel;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
@@ -16,14 +15,15 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @EntityListeners(AuditingEntityListener.class)
-@Table(name = "notifications")
+@Table(name = "notification_outboxes")
 @Entity
-public class Notification {
+public class NotificationOutbox {
 
   @Id
   @GeneratedValue(strategy = GenerationType.UUID)
@@ -34,33 +34,35 @@ public class Notification {
   @Column(name = "created_at", nullable = false, updatable = false)
   private Instant createdAt;
 
-  @Column(name = "event_id", updatable = false)
-  private UUID eventId;
+  @LastModifiedDate
+  @Column(name = "updated_at", nullable = false)
+  private Instant updatedAt;
 
-  @Column(name = "receiver_id", nullable = false, updatable = false)
-  private UUID receiverId;
+  @Column(name = "topic", nullable = false, updatable = false)
+  private String topic;
 
-  @Column(name = "title", nullable = false, updatable = false)
-  private String title;
-
-  @Column(name = "content", columnDefinition = "text", nullable = false)
-  private String content;
+  @Column(name = "payload", columnDefinition = "text", nullable = false, updatable = false)
+  private String payload;
 
   @Enumerated(EnumType.STRING)
-  @Column(name = "level", nullable = false, updatable = false)
-  private NotificationLevel level;
+  @Column(name = "status", nullable = false)
+  private NotificationOutboxStatus status;
 
-  private Notification(
-      UUID eventId, UUID receiverId, String title, String content, NotificationLevel level) {
-    this.eventId = eventId;
-    this.receiverId = receiverId;
-    this.title = title;
-    this.content = content;
-    this.level = level;
+  @Column(name = "published_at")
+  private Instant publishedAt;
+
+  private NotificationOutbox(String topic, String payload) {
+    this.topic = topic;
+    this.payload = payload;
+    this.status = NotificationOutboxStatus.PENDING;
   }
 
-  public static Notification create(
-      UUID eventId, UUID receiverId, String title, String content, NotificationLevel level) {
-    return new Notification(eventId, receiverId, title, content, level);
+  public static NotificationOutbox create(String topic, String payload) {
+    return new NotificationOutbox(topic, payload);
+  }
+
+  public void markPublished(Instant publishedAt) {
+    this.status = NotificationOutboxStatus.PUBLISHED;
+    this.publishedAt = publishedAt;
   }
 }

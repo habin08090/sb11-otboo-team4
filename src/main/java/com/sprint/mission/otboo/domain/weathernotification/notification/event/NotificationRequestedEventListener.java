@@ -1,27 +1,29 @@
 package com.sprint.mission.otboo.domain.weathernotification.notification.event;
 
-import com.sprint.mission.otboo.domain.weathernotification.notification.dto.NotificationDto;
-import com.sprint.mission.otboo.domain.weathernotification.notification.service.NotificationService;
-import com.sprint.mission.otboo.domain.weathernotification.sse.service.SseService;
+import com.sprint.mission.otboo.domain.weathernotification.notification.entity.NotificationOutbox;
+import com.sprint.mission.otboo.domain.weathernotification.notification.kafka.NotificationKafkaTopics;
+import com.sprint.mission.otboo.domain.weathernotification.notification.kafka.NotificationOutboxPayload;
+import com.sprint.mission.otboo.domain.weathernotification.notification.repository.NotificationOutboxRepository;
 import com.sprint.mission.otboo.global.event.NotificationRequestedEvent;
-import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+import tools.jackson.databind.ObjectMapper;
 
 @RequiredArgsConstructor
 @Component
 public class NotificationRequestedEventListener {
 
-  private final NotificationService notificationService;
-  private final SseService sseService;
+  private final NotificationOutboxRepository notificationOutboxRepository;
+  private final ObjectMapper objectMapper;
 
-  @Async("notificationExecutor")
-  @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+  @TransactionalEventListener(phase = TransactionPhase.BEFORE_COMMIT)
   public void on(NotificationRequestedEvent event) {
-    List<NotificationDto> notificationDtos = notificationService.create(event);
-    sseService.send(notificationDtos, "notifications");
+    NotificationOutboxPayload outboxPayload = new NotificationOutboxPayload(UUID.randomUUID(), event);
+    String payload = objectMapper.writeValueAsString(outboxPayload);
+    notificationOutboxRepository.save(
+        NotificationOutbox.create(NotificationKafkaTopics.NOTIFICATION_REQUESTED, payload));
   }
 }
