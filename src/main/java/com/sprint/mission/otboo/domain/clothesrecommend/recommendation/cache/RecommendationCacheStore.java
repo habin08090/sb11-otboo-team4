@@ -1,5 +1,6 @@
 package com.sprint.mission.otboo.domain.clothesrecommend.recommendation.cache;
 
+import com.sprint.mission.otboo.domain.clothesrecommend.recommendation.metrics.RecommendationCacheMetrics;
 import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationCandidate;
 import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationContext;
 import java.nio.charset.StandardCharsets;
@@ -35,15 +36,20 @@ public class RecommendationCacheStore {
 
   private final StringRedisTemplate redisTemplate;
   private final ObjectMapper objectMapper;
+  private final RecommendationCacheMetrics cacheMetrics;
 
   public Optional<List<UUID>> find(LlmRecommendationContext context) {
     try {
       String json = redisTemplate.opsForValue().get(key(context));
       if (json == null) {
+        cacheMetrics.countMiss();
         return Optional.empty();
       }
-      return Optional.of(List.of(objectMapper.readValue(json, UUID[].class)));
+      List<UUID> clothesIds = List.of(objectMapper.readValue(json, UUID[].class));
+      cacheMetrics.countHit();
+      return Optional.of(clothesIds);
     } catch (DataAccessException | JacksonException e) {
+      cacheMetrics.countError();
       log.warn("추천 캐시 조회 실패, 캐시 없이 진행한다", e);
       return Optional.empty();
     }
@@ -54,6 +60,7 @@ public class RecommendationCacheStore {
       redisTemplate.opsForValue()
           .set(key(context), objectMapper.writeValueAsString(clothesIds), TTL);
     } catch (DataAccessException | JacksonException e) {
+      cacheMetrics.countError();
       log.warn("추천 캐시 저장 실패, 다음 요청에서 LLM을 다시 호출한다", e);
     }
   }
