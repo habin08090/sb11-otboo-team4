@@ -34,7 +34,7 @@ public class LlmRecommendationRefiner {
 
     Optional<List<Clothes>> cached = findCached(context, candidatesById);
     if (cached.isPresent()) {
-      return cached.get();
+      return cached.orElseThrow();
     }
 
     LlmSelectedClothes selected;
@@ -52,7 +52,7 @@ public class LlmRecommendationRefiner {
     }
 
     recommendationCacheStore.save(context, selected.clothesIds());
-    return resolved.get();
+    return resolved.orElseThrow();
   }
 
   /**
@@ -66,7 +66,7 @@ public class LlmRecommendationRefiner {
       return Optional.empty();
     }
 
-    Optional<List<Clothes>> cached = resolve(cachedIds.get(), candidatesById);
+    Optional<List<Clothes>> cached = resolve(cachedIds.orElseThrow(), candidatesById);
     if (cached.isEmpty()) {
       log.warn("캐시된 선택이 현재 후보와 맞지 않음, LLM을 다시 호출한다");
       return Optional.empty();
