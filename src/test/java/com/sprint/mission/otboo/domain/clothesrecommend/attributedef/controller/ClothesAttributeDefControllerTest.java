@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,6 +65,37 @@ class ClothesAttributeDefControllerTest {
           .andExpect(jsonPath("$.name").value("컬러"))
           .andExpect(jsonPath("$.selectableValues[0]").value("빨강"))
           .andExpect(jsonPath("$.selectableValues[1]").value("파랑"));
+    }
+  }
+
+  @Nested
+  @DisplayName("목록 조회")
+  class GetAll {
+
+    @Test
+    @DisplayName("sortBy에_name을_보내면_200을_반환한다")
+    void sortBy에_name을_보내면_200을_반환한다() throws Exception {
+      // given
+      given(clothesAttributeDefService.getAll(any())).willReturn(List.of());
+
+      // when & then
+      mockMvc.perform(get("/api/clothes/attribute-defs")
+              .param("sortBy", "name")
+              .param("sortDirection", "ASCENDING"))
+          .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("sortBy에_createdAt을_보내면_200을_반환한다")
+    void sortBy에_createdAt을_보내면_200을_반환한다() throws Exception {
+      // given
+      given(clothesAttributeDefService.getAll(any())).willReturn(List.of());
+
+      // when & then
+      mockMvc.perform(get("/api/clothes/attribute-defs")
+              .param("sortBy", "createdAt")
+              .param("sortDirection", "DESCENDING"))
+          .andExpect(status().isOk());
     }
   }
 
