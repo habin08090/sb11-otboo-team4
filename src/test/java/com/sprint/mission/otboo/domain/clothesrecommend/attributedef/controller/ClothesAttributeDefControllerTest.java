@@ -1,5 +1,6 @@
 package com.sprint.mission.otboo.domain.clothesrecommend.attributedef.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -12,15 +13,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.AttributeDefSortBy;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.ClothesAttributeDefDto;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.ClothesAttributeDefListParams;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.ClothesAttributeDefUpdateRequest;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.service.ClothesAttributeDefService;
+import com.sprint.mission.otboo.global.dto.SortDirection;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
@@ -68,34 +73,49 @@ class ClothesAttributeDefControllerTest {
     }
   }
 
+  private ClothesAttributeDefListParams captureParams() {
+    ArgumentCaptor<ClothesAttributeDefListParams> paramsCaptor =
+        ArgumentCaptor.forClass(ClothesAttributeDefListParams.class);
+    verify(clothesAttributeDefService).getAll(paramsCaptor.capture());
+    return paramsCaptor.getValue();
+  }
+
   @Nested
   @DisplayName("목록 조회")
   class GetAll {
 
     @Test
-    @DisplayName("sortBy에_name을_보내면_200을_반환한다")
-    void sortBy에_name을_보내면_200을_반환한다() throws Exception {
+    @DisplayName("sortBy에_name을_보내면_NAME으로_변환해_전달한다")
+    void sortBy에_name을_보내면_NAME으로_변환해_전달한다() throws Exception {
       // given
       given(clothesAttributeDefService.getAll(any())).willReturn(List.of());
 
-      // when & then
+      // when
       mockMvc.perform(get("/api/clothes/attribute-defs")
               .param("sortBy", "name")
               .param("sortDirection", "ASCENDING"))
           .andExpect(status().isOk());
+
+      // then
+      assertThat(captureParams().sortBy()).isEqualTo(AttributeDefSortBy.NAME);
+      assertThat(captureParams().sortDirection()).isEqualTo(SortDirection.ASCENDING);
     }
 
     @Test
-    @DisplayName("sortBy에_createdAt을_보내면_200을_반환한다")
-    void sortBy에_createdAt을_보내면_200을_반환한다() throws Exception {
+    @DisplayName("sortBy에_createdAt을_보내면_CREATED_AT으로_변환해_전달한다")
+    void sortBy에_createdAt을_보내면_CREATED_AT으로_변환해_전달한다() throws Exception {
       // given
       given(clothesAttributeDefService.getAll(any())).willReturn(List.of());
 
-      // when & then
+      // when
       mockMvc.perform(get("/api/clothes/attribute-defs")
               .param("sortBy", "createdAt")
               .param("sortDirection", "DESCENDING"))
           .andExpect(status().isOk());
+
+      // then
+      assertThat(captureParams().sortBy()).isEqualTo(AttributeDefSortBy.CREATED_AT);
+      assertThat(captureParams().sortDirection()).isEqualTo(SortDirection.DESCENDING);
     }
   }
 
