@@ -5,6 +5,7 @@ import com.sprint.mission.otboo.domain.social.feed.document.FeedDocument;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.JobExecution;
@@ -41,6 +42,7 @@ public class FeedIndexMigrationService {
   @Qualifier("feedIndexMigrationJob")
   private final Job feedIndexMigrationJob;
 
+  @SchedulerLock(name = "FeedIndexMigrationLock", lockAtMostFor = "PT2H")
   public void migrate() {
     String currentIndex = currentIndexBehindAlias();
     String newIndex = FeedIndexNames.nextVersionOf(currentIndex);
@@ -63,12 +65,15 @@ public class FeedIndexMigrationService {
     IndexOperations entityOps = elasticsearchOperations.indexOps(FeedDocument.class);
     IndexOperations targetOps = indexOps(newIndex);
 
-    if (targetOps.exists()) {
-      targetOps.delete();
-      log.warn("이전 실행에서 남은 인덱스를 삭제했습니다: index={}", newIndex);
+    if (targetOps.exists() && !targetOps.delete()) {
+      log.error("이전 실행에서 남은 인덱스 삭제 실패: index={}", newIndex);
+      throw FeedIndexMigrationFailedException.operationRejected("delete", newIndex);
     }
 
-    targetOps.create(entityOps.createSettings(), entityOps.createMapping());
+    if (!targetOps.create(entityOps.createSettings(), entityOps.createMapping())) {
+      log.error("새 인덱스 생성 거부: index={}", newIndex);
+      throw FeedIndexMigrationFailedException.operationRejected("create", newIndex);
+    }
     log.info("새 피드 인덱스 생성 완료: index={}", newIndex);
   }
 
@@ -80,10 +85,13 @@ public class FeedIndexMigrationService {
     try {
       JobExecution execution = jobOperator.start(feedIndexMigrationJob, parameters);
       if (execution.getStatus() != BatchStatus.COMPLETED) {
+        log.error("마이그레이션 재색인 정상 종료 실패: index={}, status={}",
+            newIndex, execution.getStatus());
         throw FeedIndexMigrationFailedException.jobNotCompleted(execution.getStatus().name());
       }
     } catch (JobExecutionAlreadyRunningException | JobRestartException
              | JobInstanceAlreadyCompleteException | InvalidJobParametersException e) {
+      log.error("마이그레이션 재색인 실행 실패: index={}", newIndex, e);
       throw FeedIndexMigrationFailedException.wrap(e);
     }
   }
@@ -98,9 +106,15 @@ public class FeedIndexMigrationService {
 
   // remove와 add를 한 요청에 담아야 alias가 어느 인덱스도 가리키지 않는 순간이 생기지 않는다.
   private void switchAlias(String currentIndex, String newIndex) {
-    aliasOps().alias(new AliasActions(
+    boolean switched = aliasOps().alias(new AliasActions(
         new AliasAction.Remove(aliasParameters(currentIndex)),
         new AliasAction.Add(aliasParameters(newIndex))));
+
+    if (!switched) {
+      log.error("alias 전환 거부: alias={}, from={}, to={}",
+          FeedDocument.INDEX_NAME, currentIndex, newIndex);
+      throw FeedIndexMigrationFailedException.operationRejected("alias", newIndex);
+    }
     log.info("피드 인덱스 alias 전환 완료: alias={}, from={}, to={}",
         FeedDocument.INDEX_NAME, currentIndex, newIndex);
   }
@@ -109,10 +123,14 @@ public class FeedIndexMigrationService {
   private void deleteObsoleteIndex(String newIndex) {
     FeedIndexNames.indexToDelete(newIndex).ifPresent(obsolete -> {
       IndexOperations obsoleteOps = indexOps(obsolete);
-      if (obsoleteOps.exists()) {
-        obsoleteOps.delete();
-        log.info("오래된 피드 인덱스 삭제 완료: index={}", obsolete);
+      if (!obsoleteOps.exists()) {
+        return;
       }
+      if (!obsoleteOps.delete()) {
+        log.error("오래된 인덱스 삭제 거부: index={}", obsolete);
+        throw FeedIndexMigrationFailedException.operationRejected("delete", obsolete);
+      }
+      log.info("오래된 피드 인덱스 삭제 완료: index={}", obsolete);
     });
   }
 

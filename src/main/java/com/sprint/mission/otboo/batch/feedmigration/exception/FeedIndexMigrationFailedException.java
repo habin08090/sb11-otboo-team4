@@ -17,6 +17,12 @@ public class FeedIndexMigrationFailedException extends OtbooException {
     super(STATUS, MESSAGE, details);
   }
 
+  public static FeedIndexMigrationFailedException operationRejected(
+      String operation, String indexName) {
+    return new FeedIndexMigrationFailedException(
+        Map.of("operation", operation, "indexName", indexName));
+  }
+
   public static FeedIndexMigrationFailedException wrap(Throwable cause) {
     return new FeedIndexMigrationFailedException(Map.of(), cause);
   }

@@ -78,6 +78,7 @@ class FeedIndexMigrationServiceTest {
     given(elasticsearchOperations.indexOps(eq(ALIAS))).willReturn(aliasOperations);
     given(aliasOperations.getAliases(FeedDocument.INDEX_NAME))
         .willReturn(Map.of(CURRENT_INDEX.getIndexName(), Set.of()));
+    given(aliasOperations.alias(any(AliasActions.class))).willReturn(true);
   }
 
   private void givenNewIndexCreated() {
@@ -85,6 +86,7 @@ class FeedIndexMigrationServiceTest {
     given(entityOperations.createSettings()).willReturn(new Settings());
     given(entityOperations.createMapping()).willReturn(Document.create());
     given(elasticsearchOperations.indexOps(eq(NEW_INDEX))).willReturn(newIndexOperations);
+    given(newIndexOperations.create(any(Settings.class), any(Document.class))).willReturn(true);
   }
 
   private void givenJobCompleted() throws Exception {
@@ -151,7 +153,9 @@ class FeedIndexMigrationServiceTest {
     @DisplayName("Job이 정상 종료되지 않으면 alias를 전환하지 않는다")
     void Job이_정상_종료되지_않으면_alias를_전환하지_않는다() throws Exception {
       // given
-      givenAliasPointsToCurrentIndex();
+      given(elasticsearchOperations.indexOps(eq(ALIAS))).willReturn(aliasOperations);
+      given(aliasOperations.getAliases(FeedDocument.INDEX_NAME))
+          .willReturn(Map.of(CURRENT_INDEX.getIndexName(), Set.of()));
       givenNewIndexCreated();
       given(jobOperator.start(any(Job.class), any(JobParameters.class))).willReturn(jobExecution);
       given(jobExecution.getStatus()).willReturn(BatchStatus.FAILED);
@@ -163,20 +167,60 @@ class FeedIndexMigrationServiceTest {
     }
 
     @Test
+    @DisplayName("alias 전환이 거부되면 오래된 인덱스를 삭제하지 않는다")
+    void alias_전환이_거부되면_오래된_인덱스를_삭제하지_않는다() throws Exception {
+      // given
+      given(elasticsearchOperations.indexOps(eq(ALIAS))).willReturn(aliasOperations);
+      given(aliasOperations.getAliases(FeedDocument.INDEX_NAME))
+          .willReturn(Map.of(CURRENT_INDEX.getIndexName(), Set.of()));
+      given(aliasOperations.alias(any(AliasActions.class))).willReturn(false);
+      givenNewIndexCreated();
+      givenJobCompleted();
+
+      // when & then
+      assertThatThrownBy(() -> feedIndexMigrationService.migrate())
+          .isInstanceOf(FeedIndexMigrationFailedException.class);
+      verify(obsoleteIndexOperations, never()).delete();
+    }
+
+    @Test
+    @DisplayName("새 인덱스 생성이 거부되면 재색인하지 않는다")
+    void 새_인덱스_생성이_거부되면_재색인하지_않는다() throws Exception {
+      // given
+      given(elasticsearchOperations.indexOps(eq(ALIAS))).willReturn(aliasOperations);
+      given(aliasOperations.getAliases(FeedDocument.INDEX_NAME))
+          .willReturn(Map.of(CURRENT_INDEX.getIndexName(), Set.of()));
+      given(elasticsearchOperations.indexOps(FeedDocument.class)).willReturn(entityOperations);
+      given(entityOperations.createSettings()).willReturn(new Settings());
+      given(entityOperations.createMapping()).willReturn(Document.create());
+      given(elasticsearchOperations.indexOps(eq(NEW_INDEX))).willReturn(newIndexOperations);
+      given(newIndexOperations.create(any(Settings.class), any(Document.class))).willReturn(false);
+
+      // when & then
+      assertThatThrownBy(() -> feedIndexMigrationService.migrate())
+          .isInstanceOf(FeedIndexMigrationFailedException.class);
+      verify(jobOperator, never()).start(any(Job.class), any(JobParameters.class));
+    }
+
+    @Test
     @DisplayName("한 세대를 남기고 오래된 인덱스를 삭제한다")
     void 한_세대를_남기고_오래된_인덱스를_삭제한다() throws Exception {
       // given
       given(elasticsearchOperations.indexOps(eq(ALIAS))).willReturn(aliasOperations);
       given(aliasOperations.getAliases(FeedDocument.INDEX_NAME))
           .willReturn(Map.of("feeds_v3", Set.of()));
+      given(aliasOperations.alias(any(AliasActions.class))).willReturn(true);
       given(elasticsearchOperations.indexOps(FeedDocument.class)).willReturn(entityOperations);
       given(entityOperations.createSettings()).willReturn(new Settings());
       given(entityOperations.createMapping()).willReturn(Document.create());
       given(elasticsearchOperations.indexOps(eq(IndexCoordinates.of("feeds_v4"))))
           .willReturn(newIndexOperations);
+      given(newIndexOperations.create(any(Settings.class), any(Document.class))).willReturn(true);
       given(elasticsearchOperations.indexOps(eq(IndexCoordinates.of("feeds_v2"))))
           .willReturn(obsoleteIndexOperations);
       given(obsoleteIndexOperations.exists()).willReturn(true);
+      given(obsoleteIndexOperations.exists()).willReturn(true);
+      given(obsoleteIndexOperations.delete()).willReturn(true);
       givenJobCompleted();
 
       // when
@@ -194,6 +238,7 @@ class FeedIndexMigrationServiceTest {
       givenNewIndexCreated();
       givenJobCompleted();
       given(newIndexOperations.exists()).willReturn(true);
+      given(newIndexOperations.delete()).willReturn(true);
 
       // when
       feedIndexMigrationService.migrate();
@@ -202,6 +247,31 @@ class FeedIndexMigrationServiceTest {
       InOrder inOrder = inOrder(newIndexOperations);
       inOrder.verify(newIndexOperations).delete();
       inOrder.verify(newIndexOperations).create(any(Settings.class), any(Document.class));
+    }
+
+    @Test
+    @DisplayName("오래된 인덱스 삭제가 거부되면 예외를 던진다")
+    void 오래된_인덱스_삭제가_거부되면_예외를_던진다() throws Exception {
+      // given
+      given(elasticsearchOperations.indexOps(eq(ALIAS))).willReturn(aliasOperations);
+      given(aliasOperations.getAliases(FeedDocument.INDEX_NAME))
+          .willReturn(Map.of("feeds_v3", Set.of()));
+      given(aliasOperations.alias(any(AliasActions.class))).willReturn(true);
+      given(elasticsearchOperations.indexOps(FeedDocument.class)).willReturn(entityOperations);
+      given(entityOperations.createSettings()).willReturn(new Settings());
+      given(entityOperations.createMapping()).willReturn(Document.create());
+      given(elasticsearchOperations.indexOps(eq(IndexCoordinates.of("feeds_v4"))))
+          .willReturn(newIndexOperations);
+      given(newIndexOperations.create(any(Settings.class), any(Document.class))).willReturn(true);
+      given(elasticsearchOperations.indexOps(eq(IndexCoordinates.of("feeds_v2"))))
+          .willReturn(obsoleteIndexOperations);
+      given(obsoleteIndexOperations.exists()).willReturn(true);
+      given(obsoleteIndexOperations.delete()).willReturn(false);
+      givenJobCompleted();
+
+      // when & then
+      assertThatThrownBy(() -> feedIndexMigrationService.migrate())
+          .isInstanceOf(FeedIndexMigrationFailedException.class);
     }
   }
 }
