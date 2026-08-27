@@ -88,6 +88,21 @@ class LlmChatbotFetcherExternalTest extends IntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("옷_관리_질문에도_답한다")
+    void 옷_관리_질문에도_답한다() {
+      // given
+      LlmChatbotContext context = contextOf("린넨 옷 세탁은 어떻게 하는 게 좋을까?", null);
+
+      // when
+      String answer = llmChatbotFetcher.answer(context);
+
+      // then
+      log.info("[옷 관리] {}", answer);
+      assertThat(answer).isNotBlank();
+      assertThat(answer).doesNotContain("옷차림 관련 질문만 도와드릴 수 있어요");
+    }
+
+    @Test
     @DisplayName("옷차림과_무관한_질문은_거절한다")
     void 옷차림과_무관한_질문은_거절한다() {
       // given
