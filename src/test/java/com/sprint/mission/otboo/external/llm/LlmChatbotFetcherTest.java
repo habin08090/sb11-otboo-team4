@@ -18,6 +18,7 @@ import com.sprint.mission.otboo.external.llm.dto.LlmChatResponse.Choice;
 import com.sprint.mission.otboo.external.llm.dto.LlmChatResponse.Message;
 import com.sprint.mission.otboo.external.llm.dto.LlmChatbotContext;
 import com.sprint.mission.otboo.external.llm.dto.LlmChatbotWardrobeItem;
+import com.sprint.mission.otboo.external.llm.dto.LlmChatbotWeather;
 import com.sprint.mission.otboo.external.llm.exception.LlmApiException;
 import feign.FeignException;
 import feign.Request;
@@ -60,13 +61,24 @@ class LlmChatbotFetcherTest {
   }
 
   private static LlmChatbotContext context(List<LlmChatbotWardrobeItem> wardrobe) {
+    return context(wardrobe, weather());
+  }
+
+  private static LlmChatbotContext context(List<LlmChatbotWardrobeItem> wardrobe,
+      LlmChatbotWeather weather) {
     return fixtureMonkey.giveMeBuilder(LlmChatbotContext.class)
         .set("question", "오늘 뭐 입을까?")
+        .set("weather", weather)
+        .set("sensitivity", 3)
+        .set("wardrobe", wardrobe)
+        .sample();
+  }
+
+  private static LlmChatbotWeather weather() {
+    return fixtureMonkey.giveMeBuilder(LlmChatbotWeather.class)
         .set("temperature", 28.0)
         .set("precipitationType", PrecipitationType.NONE)
         .set("windStrength", WindStrength.WEAK)
-        .set("sensitivity", 3)
-        .set("wardrobe", wardrobe)
         .sample();
   }
 
@@ -164,6 +176,29 @@ class LlmChatbotFetcherTest {
 
       // then
       assertThat(result).isEqualTo("답변");
+    }
+
+    @Test
+    @DisplayName("날씨_정보가_없으면_날씨_없이_프롬프트를_조립한다")
+    void 날씨_정보가_없으면_날씨_없이_프롬프트를_조립한다() {
+      // given
+      LlmChatbotContext context = context(wardrobe(), null);
+      given(llmClient.chat(any(LlmChatRequest.class))).willReturn(responseOf("답변"));
+
+      // when
+      String result = llmChatbotFetcher.answer(context);
+
+      // then
+      assertThat(result).isEqualTo("답변");
+
+      ArgumentCaptor<LlmChatRequest> requestCaptor = ArgumentCaptor.forClass(LlmChatRequest.class);
+      verify(llmClient).chat(requestCaptor.capture());
+
+      String userPrompt = requestCaptor.getValue().messages().get(1).content();
+      assertThat(userPrompt)
+          .contains("오늘 뭐 입을까?")
+          .contains("리넨 셔츠")
+          .doesNotContain("기온:");
     }
 
     @Test
