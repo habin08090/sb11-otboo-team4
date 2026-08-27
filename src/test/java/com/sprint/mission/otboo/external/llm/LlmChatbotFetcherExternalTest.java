@@ -103,6 +103,36 @@ class LlmChatbotFetcherExternalTest extends IntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("상황에_맞는_옷차림_질문에는_옷장에_없는_옷도_권한다")
+    void 상황에_맞는_옷차림_질문에는_옷장에_없는_옷도_권한다() {
+      // given
+      LlmChatbotContext context = contextOf("내일 면접인데 뭐 입고 가는 게 좋을까?", null);
+
+      // when
+      String answer = llmChatbotFetcher.answer(context);
+
+      // then
+      log.info("[TPO] {}", answer);
+      assertThat(answer).isNotBlank();
+      assertThat(answer).doesNotContain("옷차림 관련 질문만 도와드릴 수 있어요");
+    }
+
+    @Test
+    @DisplayName("무엇을_살지_묻는_질문에도_답한다")
+    void 무엇을_살지_묻는_질문에도_답한다() {
+      // given
+      LlmChatbotContext context = contextOf("가을에 새로 살 만한 아이템 추천해줘.", null);
+
+      // when
+      String answer = llmChatbotFetcher.answer(context);
+
+      // then
+      log.info("[구매 상담] {}", answer);
+      assertThat(answer).isNotBlank();
+      assertThat(answer).doesNotContain("옷차림 관련 질문만 도와드릴 수 있어요");
+    }
+
+    @Test
     @DisplayName("옷차림과_무관한_질문은_거절한다")
     void 옷차림과_무관한_질문은_거절한다() {
       // given
