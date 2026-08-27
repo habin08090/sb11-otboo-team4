@@ -1,5 +1,6 @@
 package com.sprint.mission.otboo.global.config;
 
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.AttributeDefSortBy;
 import com.sprint.mission.otboo.domain.social.feed.dto.FeedSortBy;
 import com.sprint.mission.otboo.global.interceptor.MdcLoggingInterceptor;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +43,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
       case "createdAt" -> FeedSortBy.CREATED_AT;
       case "likeCount" -> FeedSortBy.LIKE_COUNT;
       default -> FeedSortBy.CREATED_AT;
+    });
+    registry.addConverter(String.class, AttributeDefSortBy.class, value -> switch (value) {
+      case "createdAt" -> AttributeDefSortBy.CREATED_AT;
+      case "name" -> AttributeDefSortBy.NAME;
+      default -> AttributeDefSortBy.NAME;
     });
     // 정렬 기준 enum이 있는 도메인마다 추가
   }
