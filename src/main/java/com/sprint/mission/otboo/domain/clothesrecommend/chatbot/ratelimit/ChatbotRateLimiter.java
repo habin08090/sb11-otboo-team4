@@ -26,7 +26,7 @@ public class ChatbotRateLimiter {
   private final int limitPerMinute;
 
   public ChatbotRateLimiter(StringRedisTemplate redisTemplate,
-      @Value("${chatbot.rate-limit.per-minute:5}") int limitPerMinute) {
+      @Value("${chatbot.rate-limit.per-minute:10}") int limitPerMinute) {
     this.redisTemplate = redisTemplate;
     this.limitPerMinute = limitPerMinute;
   }
