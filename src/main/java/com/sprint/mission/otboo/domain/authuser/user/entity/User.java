@@ -7,8 +7,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EntityListeners;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -19,6 +17,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.domain.Persistable;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 @Entity
@@ -29,10 +28,9 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class User {
+public class User implements Persistable<UUID> {
 
   @Id
-  @GeneratedValue(strategy = GenerationType.UUID)
   @Column(name = "id", nullable = false, updatable = false)
   private UUID id;
 
@@ -64,8 +62,9 @@ public class User {
   @Column(nullable = false)
   private Instant updatedAt;
 
-  private User(String name, String email, String password, Role role, boolean locked,
+  private User(UUID id, String name, String email, String password, Role role, boolean locked,
       LockReason lockReason) {
+    this.id = id != null ? id : UUID.randomUUID();
     this.name = name;
     this.email = email;
     this.password = password;
@@ -75,11 +74,20 @@ public class User {
   }
 
   public static User create(String name, String email, String encodedPassword) {
-    return new User(name, email, encodedPassword, Role.USER, false, LockReason.NONE);
+    return new User(null, name, email, encodedPassword, Role.USER, false, LockReason.NONE);
   }
 
   public static User createAdmin(String name, String email, String encodedPassword) {
-    return new User(name, email, encodedPassword, Role.ADMIN, false, LockReason.NONE);
+    return new User(null, name, email, encodedPassword, Role.ADMIN, false, LockReason.NONE);
+  }
+
+  public static User createChatBot(UUID id, String name, String email, String encodedPassword) {
+    return new User(id, name, email, encodedPassword, Role.USER, false, LockReason.NONE);
+  }
+
+  @Override
+  public boolean isNew() {
+    return createdAt == null;
   }
 
   public void changePassword(String newEncodedPassword) {
