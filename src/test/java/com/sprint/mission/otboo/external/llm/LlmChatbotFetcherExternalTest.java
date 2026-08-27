@@ -103,6 +103,52 @@ class LlmChatbotFetcherExternalTest extends IntegrationTestSupport {
     }
 
     @Test
+    @DisplayName("옷장에_없는_옷_조합을_물어도_옷장_이야기_없이_의견을_답한다")
+    void 옷장에_없는_옷_조합을_물어도_옷장_이야기_없이_의견을_답한다() {
+      // given
+      LlmChatbotContext context = contextOf("빨간 티에 청바지 어때?",
+          new LlmChatbotWeather(28.0, PrecipitationType.NONE, WindStrength.WEAK));
+
+      // when
+      String answer = llmChatbotFetcher.answer(context);
+
+      // then
+      log.info("[옷 조합 의견] {}", answer);
+      assertThat(answer).isNotBlank();
+      assertThat(answer).doesNotContain("옷장에 없");
+    }
+
+    @Test
+    @DisplayName("세탁을_빨래라고_물어도_답한다")
+    void 세탁을_빨래라고_물어도_답한다() {
+      // given
+      LlmChatbotContext context = contextOf("면티 빨래 어떻게 하는 게 좋을까?", null);
+
+      // when
+      String answer = llmChatbotFetcher.answer(context);
+
+      // then
+      log.info("[빨래] {}", answer);
+      assertThat(answer).isNotBlank();
+      assertThat(answer).doesNotContain("옷차림 관련 질문만 도와드릴 수 있어요");
+    }
+
+    @Test
+    @DisplayName("옷_냄새처럼_목록에_없는_표현으로_물어도_답한다")
+    void 옷_냄새처럼_목록에_없는_표현으로_물어도_답한다() {
+      // given
+      LlmChatbotContext context = contextOf("옷에서 쉰내 나는데 어떡하지?", null);
+
+      // when
+      String answer = llmChatbotFetcher.answer(context);
+
+      // then
+      log.info("[냄새] {}", answer);
+      assertThat(answer).isNotBlank();
+      assertThat(answer).doesNotContain("옷차림 관련 질문만 도와드릴 수 있어요");
+    }
+
+    @Test
     @DisplayName("상황에_맞는_옷차림_질문에는_옷장에_없는_옷도_권한다")
     void 상황에_맞는_옷차림_질문에는_옷장에_없는_옷도_권한다() {
       // given
