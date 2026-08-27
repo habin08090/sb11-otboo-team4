@@ -114,6 +114,32 @@ class UserControllerTest {
     }
 
     @Test
+    @DisplayName("비밀번호에 숫자가 없으면 400을 반환한다")
+    void 비밀번호에_숫자가_없으면_400을_반환한다() throws Exception {
+      // given
+      UserCreateRequest request = new UserCreateRequest("hong@test.com", "password", "홍길동");
+
+      // when & then
+      mockMvc.perform(post("/api/users")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("비밀번호에 영문이 없으면 400을 반환한다")
+    void 비밀번호에_영문이_없으면_400을_반환한다() throws Exception {
+      // given
+      UserCreateRequest request = new UserCreateRequest("hong@test.com", "123456", "홍길동");
+
+      // when & then
+      mockMvc.perform(post("/api/users")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("이미 가입된 이메일이면 409를 반환한다")
     void 이미_가입된_이메일이면_409를_반환한다() throws Exception {
       // given
@@ -223,7 +249,7 @@ class UserControllerTest {
       // given
       UUID userId = UUID.randomUUID();
       SecurityContextHolder.getContext().setAuthentication(authenticationOf(userId));
-      ChangePasswordRequest request = new ChangePasswordRequest("new-password1");
+      ChangePasswordRequest request = new ChangePasswordRequest("newpassword1");
 
       // when & then
       mockMvc.perform(patch("/api/users/{userId}/password", userId)
@@ -239,6 +265,21 @@ class UserControllerTest {
       UUID userId = UUID.randomUUID();
       SecurityContextHolder.getContext().setAuthentication(authenticationOf(userId));
       ChangePasswordRequest request = new ChangePasswordRequest("1234");
+
+      // when & then
+      mockMvc.perform(patch("/api/users/{userId}/password", userId)
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("비밀번호에 숫자가 없으면 400을 반환한다")
+    void 비밀번호에_숫자가_없으면_400을_반환한다() throws Exception {
+      // given
+      UUID userId = UUID.randomUUID();
+      SecurityContextHolder.getContext().setAuthentication(authenticationOf(userId));
+      ChangePasswordRequest request = new ChangePasswordRequest("abcdefg");
 
       // when & then
       mockMvc.perform(patch("/api/users/{userId}/password", userId)
