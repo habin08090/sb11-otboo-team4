@@ -5,6 +5,7 @@ import com.sprint.mission.otboo.external.llm.dto.LlmChatRequest.LlmMessage;
 import com.sprint.mission.otboo.external.llm.dto.LlmChatResponse;
 import com.sprint.mission.otboo.external.llm.dto.LlmChatbotContext;
 import com.sprint.mission.otboo.external.llm.dto.LlmChatbotWardrobeItem;
+import com.sprint.mission.otboo.external.llm.dto.LlmChatbotWeather;
 import com.sprint.mission.otboo.external.llm.exception.LlmApiException;
 import feign.FeignException;
 import java.util.List;
@@ -20,6 +21,7 @@ public class LlmChatbotFetcher {
       의상, 날씨, 코디에 대해서만 답하세요.
       그 외 질문에는 "옷차림 관련 질문만 도와드릴 수 있어요"라고 답하세요.
       사용자의 옷장에 없는 옷은 추천하지 마세요.
+      날씨 정보가 주어지지 않으면 사용자가 질문에 적은 날씨를 참고하세요.
       마크다운 없이 3문장 이내의 대화체로 답하세요.
       """;
   private static final String EMPTY_WARDROBE = "(등록된 의상이 없습니다)";
@@ -57,18 +59,26 @@ public class LlmChatbotFetcher {
 
   private String buildUserPrompt(LlmChatbotContext context) {
     return """
-        기온: %.1f도
-        강수: %s
-        바람: %s
-        추위 민감도: %d (1: 더위 많이 탐 ~ 5: 추위 많이 탐)
+        %s추위 민감도: %d (1: 더위 많이 탐 ~ 5: 추위 많이 탐)
 
         사용자 옷장:
         %s
 
         질문: %s
         """.formatted(
-        context.temperature(), context.precipitationType(), context.windStrength(),
-        context.sensitivity(), describeWardrobe(context.wardrobe()), context.question());
+        describeWeather(context.weather()), context.sensitivity(),
+        describeWardrobe(context.wardrobe()), context.question());
+  }
+
+  private String describeWeather(LlmChatbotWeather weather) {
+    if (weather == null) {
+      return "";
+    }
+    return """
+        기온: %.1f도
+        강수: %s
+        바람: %s
+        """.formatted(weather.temperature(), weather.precipitationType(), weather.windStrength());
   }
 
   private String describeWardrobe(List<LlmChatbotWardrobeItem> wardrobe) {
