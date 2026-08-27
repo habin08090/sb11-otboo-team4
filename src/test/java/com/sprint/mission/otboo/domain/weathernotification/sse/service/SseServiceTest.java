@@ -19,13 +19,16 @@ import com.navercorp.fixturemonkey.FixtureMonkey;
 import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.sprint.mission.otboo.domain.weathernotification.notification.dto.NotificationDto;
 import com.sprint.mission.otboo.domain.weathernotification.sse.config.SseConfig;
+import com.sprint.mission.otboo.domain.weathernotification.sse.dto.EmitterConnection;
 import com.sprint.mission.otboo.domain.weathernotification.sse.dto.SseMessage;
 import com.sprint.mission.otboo.domain.weathernotification.sse.repository.SseEmitterRepository;
 import com.sprint.mission.otboo.domain.weathernotification.sse.repository.SseMessageRepository;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.time.Clock;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +45,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedConstruction;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -64,11 +68,13 @@ class SseServiceTest {
   private final FixtureMonkey fm = FixtureMonkey.builder()
       .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
       .build();
+  private static final Instant FIXED_NOW = Instant.parse("2026-01-01T00:00:00Z");
+  private final Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
 
   @BeforeEach
   void setUp() {
     sseService = new SseService(sseEmitterRepository, sseMessageRepository, stringRedisTemplate,
-        objectMapper);
+        objectMapper, clock);
   }
 
   @Nested
@@ -105,7 +111,7 @@ class SseServiceTest {
 
         // then — 재생이 일어나지 않으므로 스냅샷도 null이어야 실시간 전달이 스킵되지 않는다
         SseEmitter createdEmitter = mocked.constructed().get(0);
-        verify(sseMessageRepository, never()).getLatestCreatedAt();
+        verify(sseMessageRepository, never()).getLatestSequence();
         verify(sseEmitterRepository).save(userId, createdEmitter, null);
       }
     }
@@ -116,7 +122,7 @@ class SseServiceTest {
       // given
       UUID userId = UUID.randomUUID();
       UUID lastEventId = UUID.randomUUID();
-      given(sseMessageRepository.getLatestCreatedAt()).willReturn(null);
+      given(sseMessageRepository.getLatestSequence()).willReturn(null);
 
       try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class,
           (mock, context) -> doThrow(new IOException("dead"))
@@ -135,13 +141,11 @@ class SseServiceTest {
       // given
       UUID userId = UUID.randomUUID();
       UUID lastEventId = UUID.randomUUID();
-      Instant t1 = Instant.parse("2026-01-01T00:00:01Z");
-      Instant t2 = Instant.parse("2026-01-01T00:00:02Z");
-      SseMessage message1 = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
-          "payload1", t1);
-      SseMessage message2 = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
-          "payload2", t2);
-      given(sseMessageRepository.getLatestCreatedAt()).willReturn(t2);
+      SseMessage message1 = new SseMessage(Set.of(userId), "notifications", "payload1",
+          Instant.now()).withSeq(1L);
+      SseMessage message2 = new SseMessage(Set.of(userId), "notifications", "payload2",
+          Instant.now()).withSeq(2L);
+      given(sseMessageRepository.getLatestSequence()).willReturn(2L);
       given(sseMessageRepository.findAllAfter(lastEventId, userId)).willReturn(
           List.of(message1, message2));
 
@@ -161,16 +165,13 @@ class SseServiceTest {
       // given
       UUID userId = UUID.randomUUID();
       UUID lastEventId = UUID.randomUUID();
-      Instant t1 = Instant.parse("2026-01-01T00:00:01Z");
-      Instant snapshotAt = Instant.parse("2026-01-01T00:00:02Z");
-      Instant t3 = Instant.parse("2026-01-01T00:00:03Z");
-      SseMessage message1 = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
-          "payload1", t1);
-      SseMessage message2 = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
-          "payload2", snapshotAt);
-      SseMessage message3 = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
-          "payload3", t3);
-      given(sseMessageRepository.getLatestCreatedAt()).willReturn(snapshotAt);
+      SseMessage message1 = new SseMessage(Set.of(userId), "notifications", "payload1",
+          Instant.now()).withSeq(1L);
+      SseMessage message2 = new SseMessage(Set.of(userId), "notifications", "payload2",
+          Instant.now()).withSeq(2L);
+      SseMessage message3 = new SseMessage(Set.of(userId), "notifications", "payload3",
+          Instant.now()).withSeq(3L);
+      given(sseMessageRepository.getLatestSequence()).willReturn(2L);
       given(sseMessageRepository.findAllAfter(lastEventId, userId))
           .willReturn(List.of(message1, message2, message3));
 
@@ -188,17 +189,14 @@ class SseServiceTest {
     @DisplayName("연결_시점_전역_최신_이벤트가_다른_사용자_대상이라_missed_목록에_없어도_스냅샷_이후_생성된_이_사용자_이벤트는_재생하지_않는다")
     void 연결_시점_전역_최신_이벤트가_다른_사용자_대상이라_missed_목록에_없어도_스냅샷_이후_생성된_이_사용자_이벤트는_재생하지_않는다()
         throws IOException {
-      // given — 전역 최신 이벤트(스냅샷 시각의 근거)는 다른 사용자 대상이라 이 사용자의 missed 목록엔 존재하지 않는다
+      // given — 전역 최신 이벤트(스냅샷 근거)는 다른 사용자 대상이라 이 사용자의 missed 목록엔 존재하지 않는다
       UUID userId = UUID.randomUUID();
       UUID lastEventId = UUID.randomUUID();
-      Instant beforeSnapshot = Instant.parse("2026-01-01T00:00:01Z");
-      Instant snapshotAt = Instant.parse("2026-01-01T00:00:02Z");
-      Instant afterSnapshot = Instant.parse("2026-01-01T00:00:03Z");
-      SseMessage message1 = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
-          "payload1", beforeSnapshot);
-      SseMessage message2 = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
-          "payload2", afterSnapshot);
-      given(sseMessageRepository.getLatestCreatedAt()).willReturn(snapshotAt);
+      SseMessage message1 = new SseMessage(Set.of(userId), "notifications", "payload1",
+          Instant.now()).withSeq(1L);
+      SseMessage message2 = new SseMessage(Set.of(userId), "notifications", "payload2",
+          Instant.now()).withSeq(3L);
+      given(sseMessageRepository.getLatestSequence()).willReturn(2L);
       given(sseMessageRepository.findAllAfter(lastEventId, userId))
           .willReturn(List.of(message1, message2));
 
@@ -213,29 +211,32 @@ class SseServiceTest {
     }
 
     @Test
-    @DisplayName("스냅샷을_만든_메시지_자신도_마이크로초_절삭_오차로_재생에서_빠지지_않는다")
-    void 스냅샷을_만든_메시지_자신도_마이크로초_절삭_오차로_재생에서_빠지지_않는다() throws IOException {
-      // given — Redis ZSet score는 마이크로초라 getLatestCreatedAt()이 돌려주는 스냅샷은
-      // 원본 createdAt의 서브마이크로초(나노초)가 잘린 값이다. 그 메시지 자신을 재생 대상과
-      // 비교할 때 절삭 오차로 "스냅샷 이후"로 오판되면 안 된다.
+    @DisplayName("기존_연결의_complete_호출은_락_해제_후에_일어난다")
+    void 기존_연결의_complete_호출은_락_해제_후에_일어난다() {
+      // given
       UUID userId = UUID.randomUUID();
-      UUID lastEventId = UUID.randomUUID();
-      Instant fullPrecision = Instant.parse("2026-01-01T00:00:00.123456789Z");
-      Instant truncatedSnapshot = fullPrecision.truncatedTo(ChronoUnit.MICROS);
-      SseMessage boundaryMessage = new SseMessage(UUID.randomUUID(), Set.of(userId),
-          "notifications", "payload", fullPrecision);
-      given(sseMessageRepository.getLatestCreatedAt()).willReturn(truncatedSnapshot);
-      given(sseMessageRepository.findAllAfter(lastEventId, userId))
-          .willReturn(List.of(boundaryMessage));
+      SseEmitter previousEmitter = mock(SseEmitter.class);
+      List<String> callOrder = new ArrayList<>();
+      doAnswer(inv -> {
+        callOrder.add("complete");
+        return null;
+      }).when(previousEmitter).complete();
+      given(sseEmitterRepository.save(eq(userId), any(), isNull()))
+          .willAnswer(inv -> {
+            callOrder.add("save-returned");
+            return Optional.of(new EmitterConnection(previousEmitter, null));
+          });
+      given(sseMessageRepository.findAllAfter(any(), any())).willReturn(List.of());
 
       try (MockedConstruction<SseEmitter> mocked = mockConstruction(SseEmitter.class)) {
         // when
-        sseService.connect(userId, lastEventId);
+        sseService.connect(userId, null);
 
-        // then — ping 1회 + boundaryMessage 재생 1회
-        SseEmitter createdEmitter = mocked.constructed().get(0);
-        verify(createdEmitter, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        assertThat(mocked.constructed()).hasSize(1);
       }
+
+      // then - "save 반환"이 먼저, previousEmitter.complete() 호출은 그 뒤(락 밖)여야 한다
+      assertThat(callOrder).containsExactly("save-returned", "complete");
     }
   }
 
@@ -354,6 +355,50 @@ class SseServiceTest {
       verify(sseMessageRepository, times(2)).save(any(SseMessage.class));
       verify(stringRedisTemplate, times(2)).convertAndSend(eq(SseConfig.SSE_CHANNEL), anyString());
     }
+
+    @Test
+    @DisplayName("한_수신자_저장이_실패해도_나머지_수신자는_계속_처리된다")
+    void 한_수신자_저장이_실패해도_나머지_수신자는_계속_처리된다() {
+      // given
+      NotificationDto dto1 = fm.giveMeBuilder(NotificationDto.class)
+          .set("receiverId", UUID.randomUUID())
+          .sample();
+      NotificationDto dto2 = fm.giveMeBuilder(NotificationDto.class)
+          .set("receiverId", UUID.randomUUID())
+          .sample();
+      NotificationDto dto3 = fm.giveMeBuilder(NotificationDto.class)
+          .set("receiverId", UUID.randomUUID())
+          .sample();
+      given(sseMessageRepository.save(any()))
+          .willReturn(1L)
+          .willThrow(new RuntimeException("저장 실패"))
+          .willReturn(3L);
+
+      // when
+      List<UUID> delivered = sseService.send(List.of(dto1, dto2, dto3), "notifications");
+
+      // then - 2번째가 실패해도 3번째까지 시도돼야 하고, 반환값은 성공한 알림 id만 담는다
+      verify(sseMessageRepository, times(3)).save(any());
+      verify(stringRedisTemplate, times(2)).convertAndSend(eq(SseConfig.SSE_CHANNEL), anyString());
+      assertThat(delivered).containsExactly(dto1.id(), dto3.id());
+    }
+
+    @Test
+    @DisplayName("주입된_Clock의_시각으로_메시지를_생성한다")
+    void 주입된_Clock의_시각으로_메시지를_생성한다() {
+      // given
+      NotificationDto dto = fm.giveMeBuilder(NotificationDto.class)
+          .set("receiverId", UUID.randomUUID())
+          .sample();
+      ArgumentCaptor<SseMessage> captor = ArgumentCaptor.forClass(SseMessage.class);
+
+      // when
+      sseService.send(List.of(dto), "notifications");
+
+      // then - 실제 벽시계가 아니라 주입된 Clock(FIXED_NOW)의 시각을 사용해야 한다
+      verify(sseMessageRepository).save(captor.capture());
+      assertThat(captor.getValue().createdAt()).isEqualTo(FIXED_NOW);
+    }
   }
 
   @Nested
@@ -365,9 +410,10 @@ class SseServiceTest {
     void 로컬에_연결된_emitter로_전송한다() throws IOException {
       // given
       UUID userId = UUID.randomUUID();
-      SseMessage message = new SseMessage(Set.of(userId), "notifications", "payload");
+      SseMessage message =
+          new SseMessage(Set.of(userId), "notifications", "payload", Instant.now());
       SseEmitter emitter = mock(SseEmitter.class);
-      given(sseEmitterRepository.findSnapshotAt(userId)).willReturn(Optional.empty());
+      given(sseEmitterRepository.findSnapshotSeq(userId)).willReturn(Optional.empty());
       given(sseEmitterRepository.findByUserId(userId)).willReturn(Optional.of(emitter));
 
       // when
@@ -378,16 +424,34 @@ class SseServiceTest {
     }
 
     @Test
+    @DisplayName("seq가_없는_구버전_메시지도_전달한다")
+    void seq가_없는_구버전_메시지도_전달한다() throws IOException {
+      // given - 롤링 배포 중 구버전 인스턴스가 발행한, seq 필드가 없는 메시지와의 호환성
+      UUID userId = UUID.randomUUID();
+      SseMessage legacyMessage =
+          new SseMessage(Set.of(userId), "notifications", "payload", Instant.now()); // seq=null
+      SseEmitter emitter = mock(SseEmitter.class);
+      given(sseEmitterRepository.findSnapshotSeq(userId)).willReturn(Optional.of(5L));
+      given(sseEmitterRepository.findByUserId(userId)).willReturn(Optional.of(emitter));
+
+      // when
+      sseService.deliverLocally(legacyMessage);
+
+      // then - seq를 알 수 없으면 이미 재생됐다고 판단하지 않고 그대로 전달한다(NPE로 조용히
+      // 폐기되면 안 됨)
+      verify(emitter).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
     @DisplayName("재생_스냅샷_이전_메시지는_중복_전송하지_않는다")
     void 재생_스냅샷_이전_메시지는_중복_전송하지_않는다() {
       // given — save()와 로컬 전송 사이 Pub/Sub 왕복 구간에 connect()가 끼어들어
       // 이미 재생으로 처리된 것과 같은 메시지가 뒤늦게 도착하는 상황을 재현
       UUID userId = UUID.randomUUID();
-      Instant snapshotAt = Instant.now();
-      SseMessage alreadyReplayed = new SseMessage(
-          UUID.randomUUID(), Set.of(userId), "notifications", "payload",
-          snapshotAt.minusSeconds(1));
-      given(sseEmitterRepository.findSnapshotAt(userId)).willReturn(Optional.of(snapshotAt));
+      SseMessage alreadyReplayed =
+          new SseMessage(Set.of(userId), "notifications", "payload", Instant.now())
+              .withSeq(1L);
+      given(sseEmitterRepository.findSnapshotSeq(userId)).willReturn(Optional.of(2L));
 
       // when
       sseService.deliverLocally(alreadyReplayed);
@@ -397,16 +461,14 @@ class SseServiceTest {
     }
 
     @Test
-    @DisplayName("스냅샷을_만든_메시지_자신은_마이크로초_절삭_오차_없이_중복_전송하지_않는다")
-    void 스냅샷을_만든_메시지_자신은_마이크로초_절삭_오차_없이_중복_전송하지_않는다() {
-      // given — snapshotAt은 Redis에서 복원된 마이크로초 정밀도, message.createdAt()은
-      // 그 스냅샷을 만든 바로 그 메시지의 서브마이크로초(나노초) 포함 원본 시각
+    @DisplayName("스냅샷을_만든_메시지_자신은_경계값이라도_중복_전송하지_않는다")
+    void 스냅샷을_만든_메시지_자신은_경계값이라도_중복_전송하지_않는다() {
+      // given — snapshotSeq가 이 메시지 자신의 seq와 같은 경계값(<=)인 경우
       UUID userId = UUID.randomUUID();
-      Instant fullPrecision = Instant.parse("2026-01-01T00:00:00.123456789Z");
-      Instant truncatedSnapshot = fullPrecision.truncatedTo(ChronoUnit.MICROS);
-      SseMessage boundaryMessage = new SseMessage(
-          UUID.randomUUID(), Set.of(userId), "notifications", "payload", fullPrecision);
-      given(sseEmitterRepository.findSnapshotAt(userId)).willReturn(Optional.of(truncatedSnapshot));
+      SseMessage boundaryMessage =
+          new SseMessage(Set.of(userId), "notifications", "payload", Instant.now())
+              .withSeq(5L);
+      given(sseEmitterRepository.findSnapshotSeq(userId)).willReturn(Optional.of(5L));
 
       // when
       sseService.deliverLocally(boundaryMessage);
@@ -421,13 +483,15 @@ class SseServiceTest {
       // given — message1의 emitter.send()를 인위적으로 블로킹시켜, 그 사이 message2의
       // 스냅샷 판정(findSnapshotAt)이 락에 막히지 않고 진행되는지 확인한다
       UUID userId = UUID.randomUUID();
-      SseMessage message1 = new SseMessage(Set.of(userId), "notifications", "payload1");
-      SseMessage message2 = new SseMessage(Set.of(userId), "notifications", "payload2");
+      SseMessage message1 =
+          new SseMessage(Set.of(userId), "notifications", "payload1", Instant.now());
+      SseMessage message2 =
+          new SseMessage(Set.of(userId), "notifications", "payload2", Instant.now());
       SseEmitter blockingEmitter = mock(SseEmitter.class);
       SseEmitter fastEmitter = mock(SseEmitter.class);
       CountDownLatch sendStarted = new CountDownLatch(1);
       CountDownLatch releaseSend = new CountDownLatch(1);
-      given(sseEmitterRepository.findSnapshotAt(userId)).willReturn(Optional.empty());
+      given(sseEmitterRepository.findSnapshotSeq(userId)).willReturn(Optional.empty());
       given(sseEmitterRepository.findByUserId(userId))
           .willReturn(Optional.of(blockingEmitter), Optional.of(fastEmitter));
       doAnswer(invocation -> {
@@ -463,11 +527,11 @@ class SseServiceTest {
       UUID failingReceiverId = UUID.randomUUID();
       UUID okReceiverId = UUID.randomUUID();
       SseMessage message = new SseMessage(
-          Set.of(failingReceiverId, okReceiverId), "notifications", "payload");
+          Set.of(failingReceiverId, okReceiverId), "notifications", "payload", Instant.now());
       SseEmitter okEmitter = mock(SseEmitter.class);
-      given(sseEmitterRepository.findSnapshotAt(failingReceiverId))
+      given(sseEmitterRepository.findSnapshotSeq(failingReceiverId))
           .willThrow(new RuntimeException("redis 장애"));
-      given(sseEmitterRepository.findSnapshotAt(okReceiverId)).willReturn(Optional.empty());
+      given(sseEmitterRepository.findSnapshotSeq(okReceiverId)).willReturn(Optional.empty());
       given(sseEmitterRepository.findByUserId(okReceiverId)).willReturn(Optional.of(okEmitter));
 
       // when & then

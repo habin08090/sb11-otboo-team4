@@ -24,6 +24,7 @@ import com.sprint.mission.otboo.global.dto.CursorPageResponse;
 import com.sprint.mission.otboo.global.dto.SortDirection;
 import com.sprint.mission.otboo.global.event.NotificationLevel;
 import com.sprint.mission.otboo.global.event.NotificationRequestedEvent;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -59,140 +60,61 @@ class NotificationServiceTest {
   private NotificationRepository notificationRepository;
   @Mock
   private NotificationMapper notificationMapper;
+  @Mock
+  private NotificationBatchWriter notificationBatchWriter;
+  @Mock
+  private Clock clock;
 
   @Nested
-  @DisplayName("create")
-  class Create {
+  @DisplayName("생성 및 미전달 알림 조회")
+  class CreateAndFindUndelivered {
 
     @Test
-    @DisplayName("이벤트의_receiverIds_각각에_대해_Notification을_생성해_저장하고_dto로_반환한다")
-    void 이벤트의_receiverIds_각각에_대해_Notification을_생성해_저장하고_dto로_반환한다() {
+    @DisplayName("신규_생성분과_기존_미전달분을_합쳐_반환한다")
+    void 신규_생성분과_기존_미전달분을_합쳐_반환한다() {
       // given
       UUID eventId = UUID.randomUUID();
-      UUID receiverId1 = UUID.randomUUID();
-      UUID receiverId2 = UUID.randomUUID();
-      NotificationRequestedEvent event = fixtureMonkey.giveMeBuilder(
-              NotificationRequestedEvent.class)
-          .set("receiverIds", Set.of(receiverId1, receiverId2))
-          .set("title", "제목")
-          .set("content", "내용")
-          .set("level", NotificationLevel.INFO)
-          .sample();
-      given(notificationRepository.existsByEventIdAndReceiverId(eventId, receiverId1))
-          .willReturn(false);
-      given(notificationRepository.existsByEventIdAndReceiverId(eventId, receiverId2))
-          .willReturn(false);
-
-      Notification saved1 = entityFixtureMonkey.giveMeBuilder(Notification.class)
-          .set("receiverId", receiverId1)
-          .set("title", "제목")
-          .set("content", "내용")
-          .set("level", NotificationLevel.INFO)
-          .sample();
-      Notification saved2 = entityFixtureMonkey.giveMeBuilder(Notification.class)
-          .set("receiverId", receiverId2)
-          .set("title", "제목")
-          .set("content", "내용")
-          .set("level", NotificationLevel.INFO)
-          .sample();
-      given(notificationRepository.saveAll(anyList())).willReturn(List.of(saved1, saved2));
-
-      NotificationDto dto1 = new NotificationDto(
-          saved1.getId(), saved1.getCreatedAt(), receiverId1, "제목", "내용", NotificationLevel.INFO);
-      NotificationDto dto2 = new NotificationDto(
-          saved2.getId(), saved2.getCreatedAt(), receiverId2, "제목", "내용", NotificationLevel.INFO);
-      given(notificationMapper.toDto(saved1)).willReturn(dto1);
-      given(notificationMapper.toDto(saved2)).willReturn(dto2);
-
-      // when
-      List<NotificationDto> result = notificationService.create(eventId, event);
-
-      // then
-      assertThat(result).containsExactlyInAnyOrder(dto1, dto2);
-
-      @SuppressWarnings("unchecked")
-      ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
-      verify(notificationRepository).saveAll(captor.capture());
-      assertThat(captor.getValue())
-          .hasSize(2)
-          .extracting(Notification::getReceiverId)
-          .containsExactlyInAnyOrder(receiverId1, receiverId2);
-      assertThat(captor.getValue())
-          .allSatisfy(notification -> {
-            assertThat(notification.getTitle()).isEqualTo("제목");
-            assertThat(notification.getContent()).isEqualTo("내용");
-            assertThat(notification.getLevel()).isEqualTo(NotificationLevel.INFO);
-          });
-    }
-
-    @Test
-    @DisplayName("receiverIds_수만큼_Notification_엔티티를_생성해_saveAll에_전달한다")
-    void receiverIds_수만큼_Notification_엔티티를_생성해_saveAll에_전달한다() {
-      // given
-      UUID eventId = UUID.randomUUID();
-      UUID receiverId = UUID.randomUUID();
-      NotificationRequestedEvent event = fixtureMonkey.giveMeBuilder(
-              NotificationRequestedEvent.class)
-          .set("receiverIds", Set.of(receiverId))
-          .set("title", "제목")
-          .set("content", "내용")
-          .set("level", NotificationLevel.WARNING)
-          .sample();
-      given(notificationRepository.existsByEventIdAndReceiverId(eventId, receiverId))
-          .willReturn(false);
-      given(notificationRepository.saveAll(anyList())).willReturn(List.of());
-
-      // when
-      notificationService.create(eventId, event);
-
-      // then
-      @SuppressWarnings("unchecked")
-      ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
-      verify(notificationRepository).saveAll(captor.capture());
-      assertThat(captor.getValue()).hasSize(1);
-      Notification captured = captor.getValue().get(0);
-      assertThat(captured.getReceiverId()).isEqualTo(receiverId);
-      assertThat(captured.getTitle()).isEqualTo("제목");
-      assertThat(captured.getContent()).isEqualTo("내용");
-      assertThat(captured.getLevel()).isEqualTo(NotificationLevel.WARNING);
-    }
-
-    @Test
-    @DisplayName("이미_처리된_eventId와_receiverId_조합은_건너뛰고_저장하지_않는다")
-    void 이미_처리된_eventId와_receiverId_조합은_건너뛰고_저장하지_않는다() {
-      // given
-      UUID eventId = UUID.randomUUID();
-      UUID processedReceiverId = UUID.randomUUID();
       UUID newReceiverId = UUID.randomUUID();
       NotificationRequestedEvent event = fixtureMonkey.giveMeBuilder(
               NotificationRequestedEvent.class)
-          .set("receiverIds", Set.of(processedReceiverId, newReceiverId))
+          .set("receiverIds", Set.of(newReceiverId))
           .set("title", "제목")
           .set("content", "내용")
           .set("level", NotificationLevel.INFO)
           .sample();
-      given(notificationRepository.existsByEventIdAndReceiverId(eventId, processedReceiverId))
-          .willReturn(true);
       given(notificationRepository.existsByEventIdAndReceiverId(eventId, newReceiverId))
           .willReturn(false);
-      given(notificationRepository.saveAll(anyList())).willReturn(List.of());
+
+      Notification newlySaved = entityFixtureMonkey.giveMeBuilder(Notification.class)
+          .set("receiverId", newReceiverId)
+          .sample();
+
+      Notification stillUndelivered = entityFixtureMonkey.giveMeBuilder(Notification.class)
+          .sample();
+      given(notificationRepository.findByEventIdAndSseDeliveredAtIsNull(eventId))
+          .willReturn(List.of(newlySaved, stillUndelivered));
+
+      NotificationDto dto1 = new NotificationDto(newlySaved.getId(), newlySaved.getCreatedAt(),
+          newReceiverId, "제목", "내용", NotificationLevel.INFO);
+      NotificationDto dto2 = new NotificationDto(stillUndelivered.getId(),
+          stillUndelivered.getCreatedAt(), stillUndelivered.getReceiverId(),
+          stillUndelivered.getTitle(), stillUndelivered.getContent(), stillUndelivered.getLevel());
+      given(notificationMapper.toDto(newlySaved)).willReturn(dto1);
+      given(notificationMapper.toDto(stillUndelivered)).willReturn(dto2);
 
       // when
-      notificationService.create(eventId, event);
+      List<NotificationDto> result =
+          notificationService.createAndFindUndelivered(eventId, event);
 
       // then
-      @SuppressWarnings("unchecked")
-      ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
-      verify(notificationRepository).saveAll(captor.capture());
-      assertThat(captor.getValue())
-          .hasSize(1)
-          .extracting(Notification::getReceiverId)
-          .containsExactly(newReceiverId);
+      assertThat(result).containsExactlyInAnyOrder(dto1, dto2);
+      verify(notificationBatchWriter).saveAll(anyList());
+      verify(notificationRepository).findByEventIdAndSseDeliveredAtIsNull(eventId);
     }
 
     @Test
-    @DisplayName("모든_receiverId가_이미_처리됐으면_저장을_생략하고_빈_목록을_반환한다")
-    void 모든_receiverId가_이미_처리됐으면_저장을_생략하고_빈_목록을_반환한다() {
+    @DisplayName("모든_receiverId가_이미_처리됐으면_저장_없이_기존_미전달분만_반환한다")
+    void 모든_receiverId가_이미_처리됐으면_저장_없이_기존_미전달분만_반환한다() {
       // given
       UUID eventId = UUID.randomUUID();
       UUID receiverId = UUID.randomUUID();
@@ -206,12 +128,59 @@ class NotificationServiceTest {
       given(notificationRepository.existsByEventIdAndReceiverId(eventId, receiverId))
           .willReturn(true);
 
+      Notification undelivered = entityFixtureMonkey.giveMeBuilder(Notification.class).sample();
+      given(notificationRepository.findByEventIdAndSseDeliveredAtIsNull(eventId))
+          .willReturn(List.of(undelivered));
+      NotificationDto dto = new NotificationDto(undelivered.getId(), undelivered.getCreatedAt(),
+          undelivered.getReceiverId(), undelivered.getTitle(), undelivered.getContent(),
+          undelivered.getLevel());
+      given(notificationMapper.toDto(undelivered)).willReturn(dto);
+
       // when
-      List<NotificationDto> result = notificationService.create(eventId, event);
+      List<NotificationDto> result =
+          notificationService.createAndFindUndelivered(eventId, event);
 
       // then
-      assertThat(result).isEmpty();
-      verify(notificationRepository, never()).saveAll(anyList());
+      assertThat(result).containsExactly(dto);
+      verify(notificationBatchWriter).saveAll(List.of());
+    }
+  }
+
+  @Nested
+  @DisplayName("SSE 전달 완료 표시")
+  class MarkSseDelivered {
+
+    @Test
+    @DisplayName("전달된_알림들의_sse_delivered_at을_채운다")
+    void 전달된_알림들의_sse_delivered_at을_채운다() {
+      // given
+      UUID id1 = UUID.randomUUID();
+      UUID id2 = UUID.randomUUID();
+      Notification notification1 =
+          entityFixtureMonkey.giveMeBuilder(Notification.class).set("id", id1).sample();
+      Notification notification2 =
+          entityFixtureMonkey.giveMeBuilder(Notification.class).set("id", id2).sample();
+      Instant now = Instant.parse("2026-01-01T00:00:00Z");
+      given(clock.instant()).willReturn(now);
+      given(notificationRepository.findAllById(List.of(id1, id2)))
+          .willReturn(List.of(notification1, notification2));
+
+      // when
+      notificationService.markSseDelivered(List.of(id1, id2));
+
+      // then
+      assertThat(notification1.getSseDeliveredAt()).isEqualTo(now);
+      assertThat(notification2.getSseDeliveredAt()).isEqualTo(now);
+    }
+
+    @Test
+    @DisplayName("빈_목록이면_조회하지_않는다")
+    void 빈_목록이면_조회하지_않는다() {
+      // when
+      notificationService.markSseDelivered(List.of());
+
+      // then
+      verify(notificationRepository, never()).findAllById(any());
     }
   }
 

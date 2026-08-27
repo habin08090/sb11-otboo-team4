@@ -1,7 +1,17 @@
 package com.sprint.mission.otboo.domain.weathernotification.sse.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.navercorp.fixturemonkey.FixtureMonkey;
 import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.sprint.mission.otboo.domain.weathernotification.sse.dto.SseMessage;
@@ -22,13 +32,20 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.core.RedisOperations;
+import org.springframework.data.redis.core.SessionCallback;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.ZSetOperations;
 import tools.jackson.databind.ObjectMapper;
 
 class SseMessageRepositoryTest implements RedisTestContainerSupport {
@@ -37,12 +54,15 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
 
   private final FixtureMonkey fm = FixtureMonkey.builder()
       .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
+      .defaultNotNull(true) // createdAt이 null이면 SseMessage 생성 자체가 NPE라 반드시 필요
       .build();
 
   static LettuceConnectionFactory connectionFactory;
   static StringRedisTemplate redisTemplate;
 
   private SseMessageRepository sseMessageRepository;
+  private ListAppender<ILoggingEvent> appender;
+  private Logger logger;
 
   @BeforeAll
   static void setUpRedis() {
@@ -60,32 +80,37 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
 
   @BeforeEach
   void setUp() {
-    Set<String> messageKeys = redisTemplate.keys("sse:message:*");
-    if (messageKeys != null && !messageKeys.isEmpty()) {
-      redisTemplate.delete(messageKeys);
-    }
-    redisTemplate.delete("sse:message-index");
+    deleteByPattern("sse:message:*");
+    deleteByPattern("sse:message-receivers:*");
+    deleteByPattern("sse:message-index:*");
+    redisTemplate.delete("sse:message-index-by-time");
+    redisTemplate.delete("sse:seq");
 
     sseMessageRepository = new SseMessageRepository(redisTemplate,
         new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC),
         new SseReplayBufferProperties(10, 1000));
+
+    logger = (Logger) LoggerFactory.getLogger(SseMessageRepository.class);
+    appender = new ListAppender<>();
+    appender.start();
+    logger.addAppender(appender);
+  }
+
+  @AfterEach
+  void tearDown() {
+    logger.detachAppender(appender);
+  }
+
+  private void deleteByPattern(String pattern) {
+    Set<String> keys = redisTemplate.keys(pattern);
+    if (keys != null && !keys.isEmpty()) {
+      redisTemplate.delete(keys);
+    }
   }
 
   @Nested
   @DisplayName("메시지 저장")
   class Save {
-
-    @Test
-    @DisplayName("저장하면 메시지의 id를 반환한다")
-    void 저장하면_메시지의_id를_반환한다() {
-      // given
-      SseMessage message = fm.giveMeBuilder(SseMessage.class)
-          .set("data", "payload")
-          .sample();
-
-      // when & then
-      assertThat(sseMessageRepository.save(message)).isEqualTo(message.id());
-    }
 
     @Test
     @DisplayName("저장한 메시지는 Redis에 JSON으로 기록된다")
@@ -103,10 +128,56 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
     }
 
     @Test
-    @DisplayName("저장한 메시지의 id가 인덱스에 생성 시각 score로 등록된다")
+    @DisplayName("저장한 메시지의 id가 수신자별 인덱스에 seq를 score로 등록된다")
     void 저장한_메시지의_id가_인덱스에_등록된다() {
       // given
+      UUID receiverId = UUID.randomUUID();
       SseMessage message = fm.giveMeBuilder(SseMessage.class)
+          .set("receiverIds", Set.of(receiverId))
+          .set("data", "payload")
+          .sample();
+
+      // when
+      long seq = sseMessageRepository.save(message);
+
+      // then
+      assertThat(redisTemplate.opsForZSet()
+          .score("sse:message-index:" + receiverId, message.id().toString()))
+          .isEqualTo((double) seq);
+    }
+
+    @Test
+    @DisplayName("서로_다른_인스턴스에서_저장해도_seq는_전역적으로_단조_증가한다")
+    void 서로_다른_인스턴스에서_저장해도_seq는_전역적으로_단조_증가한다() {
+      // given - 두 번째 저장의 createdAt이 첫 번째보다 이르다(시계 스큐 재현)
+      SseMessage earlierClockLaterSave = fm.giveMeBuilder(SseMessage.class)
+          .set("data", "payload")
+          .set("createdAt", NOW.minusSeconds(1)) // 다른 인스턴스 시계가 1초 느림
+          .sample();
+      SseMessage laterClockEarlierSave = fm.giveMeBuilder(SseMessage.class)
+          .set("data", "payload")
+          .set("createdAt", NOW)
+          .sample();
+
+      // when
+      long firstSeq = sseMessageRepository.save(laterClockEarlierSave);
+      long secondSeq = sseMessageRepository.save(earlierClockLaterSave);
+
+      // then - createdAt은 두 번째가 더 이르지만, 저장 순서(seq)는 항상 증가해야 한다
+      assertThat(secondSeq).isGreaterThan(firstSeq);
+    }
+  }
+
+  @Nested
+  @DisplayName("MULTI/EXEC 결과 검사")
+  class MultiExecResultCheck {
+
+    @Test
+    @DisplayName("정상_저장이면_경고_로그를_남기지_않는다")
+    void 정상_저장이면_경고_로그를_남기지_않는다() {
+      // given
+      SseMessage message = fm.giveMeBuilder(SseMessage.class)
+          .set("receiverIds", Set.of(UUID.randomUUID()))
           .set("data", "payload")
           .sample();
 
@@ -114,10 +185,89 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
       sseMessageRepository.save(message);
 
       // then
-      Instant createdAt = message.createdAt();
-      double expectedMicros = createdAt.getEpochSecond() * 1_000_000L + createdAt.getNano() / 1_000L;
-      assertThat(redisTemplate.opsForZSet().score("sse:message-index", message.id().toString()))
-          .isEqualTo(expectedMicros);
+      assertThat(appender.list)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .noneMatch(msg -> msg.contains("MULTI/EXEC 일부 실패"));
+    }
+
+    @Test
+    @DisplayName("MULTI_EXEC_결과_개수가_예상과_다르면_경고_로그를_남긴다")
+    void MULTI_EXEC_결과_개수가_예상과_다르면_경고_로그를_남긴다() {
+      // given - StringRedisTemplate을 목으로 대체해 exec() 결과 개수를 인위적으로 어긋나게 만든다
+      // (Lettuce 파이프라인 특성상 실제 부분 실패를 통합 테스트로 재현하긴 어려움)
+      StringRedisTemplate mockTemplate = mock(StringRedisTemplate.class);
+      ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+      @SuppressWarnings("unchecked")
+      ZSetOperations<String, String> zSetOpsMock = mock(ZSetOperations.class);
+      given(mockTemplate.opsForValue()).willReturn(valueOps);
+      given(mockTemplate.opsForZSet()).willReturn(zSetOpsMock);
+      given(valueOps.increment("sse:seq")).willReturn(1L);
+      given(zSetOpsMock.rangeByScore(anyString(), anyDouble(), anyDouble()))
+          .willReturn(Set.of());
+      given(mockTemplate.execute(any(SessionCallback.class)))
+          .willReturn(List.of("OK")); // 수신자 1명이면 기대 개수는 5(SET+SADD+EXPIRE+ZADD+ZADD)
+
+      SseMessageRepository repository = new SseMessageRepository(mockTemplate,
+          new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC),
+          new SseReplayBufferProperties(10, 1000));
+      SseMessage message = fm.giveMeBuilder(SseMessage.class)
+          .set("receiverIds", Set.of(UUID.randomUUID()))
+          .set("data", "payload")
+          .sample();
+
+      // when
+      repository.save(message);
+
+      // then
+      assertThat(appender.list)
+          .extracting(ILoggingEvent::getFormattedMessage)
+          .anyMatch(msg -> msg.contains("MULTI/EXEC 일부 실패"));
+    }
+
+    @Test
+    @DisplayName("MULTI_이후_예외가_발생하면_discard_후_원래_예외를_재전파한다")
+    void MULTI_이후_예외가_발생하면_discard_후_원래_예외를_재전파한다() {
+      // given - execute(SessionCallback)을 직접 흉내내 RedisOperations를 목으로 넘긴다
+      // (Lettuce 파이프라인 특성상 실제 커넥션 장애를 통합 테스트로 재현하긴 어려움)
+      StringRedisTemplate mockTemplate = mock(StringRedisTemplate.class);
+      ValueOperations<String, String> valueOps = mock(ValueOperations.class);
+      @SuppressWarnings("unchecked")
+      ZSetOperations<String, String> zSetOpsMock = mock(ZSetOperations.class);
+      given(mockTemplate.opsForValue()).willReturn(valueOps);
+      given(mockTemplate.opsForZSet()).willReturn(zSetOpsMock);
+      given(valueOps.increment("sse:seq")).willReturn(1L);
+      given(zSetOpsMock.rangeByScore(anyString(), anyDouble(), anyDouble()))
+          .willReturn(Set.of());
+
+      @SuppressWarnings("unchecked")
+      RedisOperations<String, String> mockOperations = mock(RedisOperations.class);
+      @SuppressWarnings("unchecked")
+      ValueOperations<String, String> opsValueOps = mock(ValueOperations.class);
+      @SuppressWarnings("unchecked")
+      SetOperations<String, String> opsSetOps = mock(SetOperations.class);
+      @SuppressWarnings("unchecked")
+      ZSetOperations<String, String> opsZSetOps = mock(ZSetOperations.class);
+      given(mockOperations.opsForValue()).willReturn(opsValueOps);
+      given(mockOperations.opsForSet()).willReturn(opsSetOps);
+      given(mockOperations.opsForZSet()).willReturn(opsZSetOps);
+      RuntimeException redisFailure = new RuntimeException("Redis 장애");
+      given(opsZSetOps.add(anyString(), anyString(), anyDouble())).willThrow(redisFailure);
+      given(mockTemplate.execute(any(SessionCallback.class))).willAnswer(invocation -> {
+        SessionCallback<?> callback = invocation.getArgument(0);
+        return callback.execute(mockOperations);
+      });
+
+      SseMessageRepository repository = new SseMessageRepository(mockTemplate,
+          new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC),
+          new SseReplayBufferProperties(10, 1000));
+      SseMessage message = fm.giveMeBuilder(SseMessage.class)
+          .set("receiverIds", Set.of(UUID.randomUUID()))
+          .set("data", "payload")
+          .sample();
+
+      // when & then
+      assertThatThrownBy(() -> repository.save(message)).isSameAs(redisFailure);
+      verify(mockOperations).discard();
     }
   }
 
@@ -139,7 +289,7 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
       sseMessageRepository.save(forOther);
       SseMessage forUser = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
           "for-user", NOW);
-      sseMessageRepository.save(forUser);
+      forUser = forUser.withSeq(sseMessageRepository.save(forUser));
 
       // when
       List<SseMessage> found = sseMessageRepository.findAllAfter(anchor.id(), userId);
@@ -177,7 +327,7 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
       redisTemplate.opsForValue().set("sse:message:" + corrupted.id(), "not-valid-json");
       SseMessage valid = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
           "valid", NOW);
-      sseMessageRepository.save(valid);
+      valid = valid.withSeq(sseMessageRepository.save(valid));
 
       // when
       List<SseMessage> found = sseMessageRepository.findAllAfter(anchor.id(), userId);
@@ -186,28 +336,6 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
       assertThat(found).containsExactly(valid);
     }
 
-    @Test
-    @DisplayName("같은 밀리초 안에서도 마이크로초 정밀도로 실제 생성 순서를 따른다")
-    void 같은_밀리초_안에서도_마이크로초_정밀도로_실제_생성_순서를_따른다() {
-      // given — m1이 m2보다 먼저 생성됐지만(같은 밀리초, 마이크로초만 다름) m1의 id가
-      // m2의 id보다 사전순으로 크다 — 밀리초 단위 score라면 둘이 동점이라 사전순(m2, m1)으로
-      // tie-break되어, lastEventId=m1일 때 ZRANK가 m1을 m2보다 뒤로 잡아 m2가 재생에서 빠진다
-      UUID userId = UUID.randomUUID();
-      Instant m1CreatedAt = NOW.plusNanos(100_000);
-      Instant m2CreatedAt = NOW.plusNanos(900_000);
-      SseMessage m1 = new SseMessage(UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
-          Set.of(userId), "notifications", "m1", m1CreatedAt);
-      SseMessage m2 = new SseMessage(UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
-          Set.of(userId), "notifications", "m2", m2CreatedAt);
-      sseMessageRepository.save(m1);
-      sseMessageRepository.save(m2);
-
-      // when
-      List<SseMessage> found = sseMessageRepository.findAllAfter(m1.id(), userId);
-
-      // then — m2가 m1보다 나중에 생성됐으므로 재생 대상에 포함돼야 한다
-      assertThat(found).containsExactly(m2);
-    }
   }
 
   @Nested
@@ -237,9 +365,9 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
       cappedRepository.save(anchor);
       cappedRepository.save(m1);
       cappedRepository.save(m2);
-      cappedRepository.save(m3);
-      cappedRepository.save(m4);
-      cappedRepository.save(m5);
+      m3 = m3.withSeq(cappedRepository.save(m3));
+      m4 = m4.withSeq(cappedRepository.save(m4));
+      m5 = m5.withSeq(cappedRepository.save(m5));
 
       // when
       List<SseMessage> found = cappedRepository.findAllAfter(anchor.id(), userId);
@@ -250,19 +378,48 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
   }
 
   @Nested
-  @DisplayName("최신 생성 시각 조회")
-  class GetLatestCreatedAt {
+  @DisplayName("유저별 인덱스 격리")
+  class PerUserIndexIsolation {
+
+    @Test
+    @DisplayName("한_유저의_메시지가_많아도_다른_유저의_재생_상한에_영향을_주지_않는다")
+    void 한_유저의_메시지가_많아도_다른_유저의_재생_상한에_영향을_주지_않는다() {
+      // given - target 메시지 1건을 먼저 저장한 뒤, maxReplaySize보다 많은 타인(other) 메시지로
+      // 뒤덮는다. 전역 인덱스였다면 target 메시지가 최신 N건 밖으로 밀려 잘렸어야 한다.
+      SseMessageRepository smallCapRepository = new SseMessageRepository(redisTemplate,
+          new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC), new SseReplayBufferProperties(10, 5));
+      UUID other = UUID.randomUUID();
+      UUID target = UUID.randomUUID();
+      SseMessage anchor = new SseMessage(Set.of(target), "notifications", "anchor", NOW);
+      anchor = anchor.withSeq(smallCapRepository.save(anchor));
+      SseMessage targetMessage = new SseMessage(Set.of(target), "notifications", "for-target", NOW);
+      long targetSeq = smallCapRepository.save(targetMessage);
+      for (int i = 0; i < 10; i++) { // other 메시지 10건으로 maxSize(5)를 넘김
+        smallCapRepository.save(new SseMessage(Set.of(other), "notifications", "other-" + i, NOW));
+      }
+
+      // when
+      List<SseMessage> result = smallCapRepository.findAllAfter(anchor.id(), target);
+
+      // then - 전역 인덱스였다면 other 10건에 밀려 target 메시지가 상한 밖으로 잘렸어야 한다
+      assertThat(result).extracting(SseMessage::seq).contains(targetSeq);
+    }
+  }
+
+  @Nested
+  @DisplayName("최신 seq 조회")
+  class GetLatestSequence {
 
     @Test
     @DisplayName("메시지가 없으면 null을 반환한다")
     void 메시지가_없으면_null을_반환한다() {
       // when & then
-      assertThat(sseMessageRepository.getLatestCreatedAt()).isNull();
+      assertThat(sseMessageRepository.getLatestSequence()).isNull();
     }
 
     @Test
-    @DisplayName("가장 최근 저장한 메시지의 생성 시각을 반환한다")
-    void 가장_최근_저장한_메시지의_생성_시각을_반환한다() {
+    @DisplayName("가장 최근 저장한 메시지의 seq를 반환한다")
+    void 가장_최근_저장한_메시지의_seq를_반환한다() {
       // given
       UUID userId = UUID.randomUUID();
       Instant earlier = NOW.minusSeconds(10);
@@ -271,10 +428,10 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
       SseMessage second = new SseMessage(UUID.randomUUID(), Set.of(userId), "notifications",
           "second", NOW);
       sseMessageRepository.save(first);
-      sseMessageRepository.save(second);
+      long secondSeq = sseMessageRepository.save(second);
 
       // when & then
-      assertThat(sseMessageRepository.getLatestCreatedAt()).isEqualTo(NOW);
+      assertThat(sseMessageRepository.getLatestSequence()).isEqualTo(secondSeq);
     }
   }
 
@@ -295,19 +452,24 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
           "kept", NOW.minus(Duration.ofMinutes(1)));
       sseMessageRepository.save(expired);
       sseMessageRepository.save(anchor);
-      sseMessageRepository.save(kept);
+      kept = kept.withSeq(sseMessageRepository.save(kept));
 
       // when
       List<SseMessage> found = sseMessageRepository.findAllAfter(anchor.id(), userId);
 
       // then
       assertThat(found).containsExactly(kept);
-      assertThat(redisTemplate.opsForZSet().rank("sse:message-index", expired.id().toString()))
+      assertThat(redisTemplate.opsForZSet()
+          .rank("sse:message-index-by-time", expired.id().toString()))
           .isNull();
+      assertThat(redisTemplate.opsForZSet()
+          .rank("sse:message-index:" + userId, expired.id().toString()))
+          .isNull();
+      assertThat(redisTemplate.hasKey("sse:message-receivers:" + expired.id())).isFalse();
     }
 
     @Test
-    @DisplayName("findAllAfter/getLatestCreatedAt 없이 save만 반복해도 보관 기간이 지난 항목이 정리된다")
+    @DisplayName("findAllAfter/getLatestSequence 없이 save만 반복해도 보관 기간이 지난 항목이 정리된다")
     void save만_반복해도_보관_기간이_지난_항목이_정리된다() {
       // given
       UUID userId = UUID.randomUUID();
@@ -316,10 +478,37 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
       sseMessageRepository.save(expired);
 
       // when — 조회 메서드를 거치지 않고 save만 한 번 더 호출
-      sseMessageRepository.save(new SseMessage(Set.of(userId), "notifications", "fresh"));
+      sseMessageRepository.save(new SseMessage(Set.of(userId), "notifications", "fresh", NOW));
 
       // then
-      assertThat(redisTemplate.opsForZSet().rank("sse:message-index", expired.id().toString()))
+      assertThat(redisTemplate.opsForZSet()
+          .rank("sse:message-index-by-time", expired.id().toString()))
+          .isNull();
+      assertThat(redisTemplate.opsForZSet()
+          .rank("sse:message-index:" + userId, expired.id().toString()))
+          .isNull();
+    }
+
+    @Test
+    @DisplayName("한_메시지가_여러_수신자에게_갔어도_만료_시_모든_수신자_인덱스에서_제거된다")
+    void 한_메시지가_여러_수신자에게_갔어도_만료_시_모든_수신자_인덱스에서_제거된다() {
+      // given — 팬아웃 메시지(수신자 여러 명)
+      UUID receiver1 = UUID.randomUUID();
+      UUID receiver2 = UUID.randomUUID();
+      SseMessage expired = new SseMessage(UUID.randomUUID(), Set.of(receiver1, receiver2),
+          "notifications", "old", NOW.minus(Duration.ofMinutes(11)));
+      sseMessageRepository.save(expired);
+
+      // when — 조회 메서드를 거치지 않고 save만 한 번 더 호출해 evictExpired()를 태운다
+      sseMessageRepository.save(
+          new SseMessage(Set.of(receiver1), "notifications", "fresh", NOW));
+
+      // then — 두 수신자 인덱스에서 모두 제거된다
+      assertThat(redisTemplate.opsForZSet()
+          .rank("sse:message-index:" + receiver1, expired.id().toString()))
+          .isNull();
+      assertThat(redisTemplate.opsForZSet()
+          .rank("sse:message-index:" + receiver2, expired.id().toString()))
           .isNull();
     }
   }
@@ -349,7 +538,7 @@ class SseMessageRepositoryTest implements RedisTestContainerSupport {
             ready.countDown();
             start.await();
             sseMessageRepository.save(
-                new SseMessage(Set.of(userId), "notifications", "payload-" + index));
+                new SseMessage(Set.of(userId), "notifications", "payload-" + index, NOW));
             return null;
           });
         }

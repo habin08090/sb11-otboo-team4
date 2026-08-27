@@ -2,13 +2,15 @@ package com.sprint.mission.otboo.domain.weathernotification.sse.service;
 
 import com.sprint.mission.otboo.domain.weathernotification.notification.dto.NotificationDto;
 import com.sprint.mission.otboo.domain.weathernotification.sse.config.SseConfig;
+import com.sprint.mission.otboo.domain.weathernotification.sse.dto.EmitterConnection;
 import com.sprint.mission.otboo.domain.weathernotification.sse.dto.SseMessage;
 import com.sprint.mission.otboo.domain.weathernotification.sse.repository.SseEmitterRepository;
 import com.sprint.mission.otboo.domain.weathernotification.sse.repository.SseMessageRepository;
 import java.io.IOException;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -41,6 +43,7 @@ public class SseService {
   private final SseMessageRepository sseMessageRepository;
   private final StringRedisTemplate stringRedisTemplate;
   private final ObjectMapper objectMapper;
+  private final Clock clock;
 
   private final ReentrantLock[] connectionLocks = Stream.generate(ReentrantLock::new)
       .limit(LOCK_STRIPES)
@@ -52,15 +55,17 @@ public class SseService {
     emitter.onTimeout(() -> sseEmitterRepository.remove(userId, emitter));
     emitter.onError(e -> sseEmitterRepository.remove(userId, emitter));
 
-    Instant snapshotAt;
+    Long snapshotSeq;
+    Optional<EmitterConnection> previous;
     ReentrantLock lock = lockFor(userId);
     lock.lock();
     try {
-      snapshotAt = lastEventId == null ? null : sseMessageRepository.getLatestCreatedAt();
-      sseEmitterRepository.save(userId, emitter, snapshotAt);
+      snapshotSeq = lastEventId == null ? null : sseMessageRepository.getLatestSequence();
+      previous = sseEmitterRepository.save(userId, emitter, snapshotSeq);
     } finally {
       lock.unlock();
     }
+    previous.ifPresent(p -> p.emitter().complete()); // 네트워크 IO는 락 밖에서
 
     if (!ping(emitter)) {
       return emitter;
@@ -68,7 +73,7 @@ public class SseService {
 
     List<SseMessage> missed = sseMessageRepository.findAllAfter(lastEventId, userId);
     for (SseMessage message : missed) {
-      if (snapshotAt != null && isAfterSnapshot(message.createdAt(), snapshotAt)) {
+      if (snapshotSeq != null && message.seq() > snapshotSeq) {
         break;
       }
       if (!sendToEmitter(emitter, message)) {
@@ -78,13 +83,22 @@ public class SseService {
     return emitter;
   }
 
-  public void send(List<NotificationDto> notificationDtos, String eventName) {
+  public List<UUID> send(List<NotificationDto> notificationDtos, String eventName) {
+    List<UUID> delivered = new ArrayList<>();
     notificationDtos.forEach(dto -> {
-      SseMessage message = new SseMessage(Set.of(dto.receiverId()), eventName, dto);
-      sseMessageRepository.save(message);
-      stringRedisTemplate.convertAndSend(SseConfig.SSE_CHANNEL,
-          objectMapper.writeValueAsString(message));
+      try {
+        SseMessage message =
+            new SseMessage(Set.of(dto.receiverId()), eventName, dto, Instant.now(clock));
+        long seq = sseMessageRepository.save(message);
+        SseMessage withSeq = message.withSeq(seq);
+        stringRedisTemplate.convertAndSend(SseConfig.SSE_CHANNEL,
+            objectMapper.writeValueAsString(withSeq));
+        delivered.add(dto.id());
+      } catch (Exception e) {
+        log.error("SSE 발행 실패: receiverId={}", dto.receiverId(), e);
+      }
     });
+    return delivered;
   }
 
   public void deliverLocally(SseMessage message) {
@@ -102,9 +116,11 @@ public class SseService {
     ReentrantLock lock = lockFor(receiverId);
     lock.lock();
     try {
-      Optional<Instant> snapshotAt = sseEmitterRepository.findSnapshotAt(receiverId);
-      boolean alreadyReplayed = snapshotAt
-          .filter(s -> !isAfterSnapshot(message.createdAt(), s))
+      Optional<Long> snapshotSeq = sseEmitterRepository.findSnapshotSeq(receiverId);
+      // message.seq()가 null이면(롤링 배포 중 구버전 인스턴스가 발행한 메시지) 이미 재생됐는지
+      // 판단할 근거가 없다 — 조용히 폐기하는 대신 그대로 전달한다(중복 전송 위험 < 유실 위험).
+      boolean alreadyReplayed = message.seq() != null && snapshotSeq
+          .filter(s -> message.seq() <= s)
           .isPresent();
       if (alreadyReplayed) {
         return Optional.empty();
@@ -113,10 +129,6 @@ public class SseService {
     } finally {
       lock.unlock();
     }
-  }
-
-  private boolean isAfterSnapshot(Instant createdAt, Instant snapshotAt) {
-    return createdAt.truncatedTo(ChronoUnit.MICROS).isAfter(snapshotAt);
   }
 
   private ReentrantLock lockFor(UUID userId) {

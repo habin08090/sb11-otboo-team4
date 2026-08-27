@@ -9,6 +9,8 @@ import com.sprint.mission.otboo.domain.weathernotification.notification.mapper.N
 import com.sprint.mission.otboo.domain.weathernotification.notification.repository.NotificationRepository;
 import com.sprint.mission.otboo.global.dto.CursorPageResponse;
 import com.sprint.mission.otboo.global.event.NotificationRequestedEvent;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -24,20 +26,30 @@ public class NotificationService {
 
   private final NotificationRepository notificationRepository;
   private final NotificationMapper notificationMapper;
+  private final NotificationBatchWriter notificationBatchWriter;
+  private final Clock clock;
 
   @Transactional
-  public List<NotificationDto> create(UUID eventId, NotificationRequestedEvent event) {
-    List<Notification> notifications = event.receiverIds().stream()
+  public List<NotificationDto> createAndFindUndelivered(UUID eventId, NotificationRequestedEvent event) {
+    List<Notification> newlyCreated = event.receiverIds().stream()
         .filter(receiverId -> !notificationRepository.existsByEventIdAndReceiverId(eventId, receiverId))
         .map(receiverId -> Notification.create(
             eventId, receiverId, event.title(), event.content(), event.level()))
         .toList();
-    if (notifications.isEmpty()) {
-      return List.of();
-    }
-    return notificationRepository.saveAll(notifications).stream()
+    notificationBatchWriter.saveAll(newlyCreated);
+    return notificationRepository.findByEventIdAndSseDeliveredAtIsNull(eventId).stream()
         .map(notificationMapper::toDto)
         .toList();
+  }
+
+  @Transactional
+  public void markSseDelivered(List<UUID> notificationIds) {
+    if (notificationIds.isEmpty()) {
+      return;
+    }
+    Instant deliveredAt = Instant.now(clock);
+    notificationRepository.findAllById(notificationIds)
+        .forEach(notification -> notification.markSseDelivered(deliveredAt));
   }
 
   public CursorPageResponse<NotificationDto> getNotifications(

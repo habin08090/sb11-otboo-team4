@@ -2,10 +2,8 @@ package com.sprint.mission.otboo.domain.weathernotification.sse.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 
-import java.time.Instant;
+import com.sprint.mission.otboo.domain.weathernotification.sse.dto.EmitterConnection;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,7 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 class SseEmitterRepositoryTest {
 
-  private static final Instant SNAPSHOT_AT = Instant.now();
+  private static final long SNAPSHOT_SEQ = 42L;
 
   private SseEmitterRepository sseEmitterRepository;
 
@@ -37,7 +35,7 @@ class SseEmitterRepositoryTest {
       SseEmitter emitter = new SseEmitter();
 
       // when
-      sseEmitterRepository.save(userId, emitter, SNAPSHOT_AT);
+      sseEmitterRepository.save(userId, emitter, SNAPSHOT_SEQ);
       Optional<SseEmitter> found = sseEmitterRepository.findByUserId(userId);
 
       // then
@@ -60,10 +58,10 @@ class SseEmitterRepositoryTest {
       UUID userId = UUID.randomUUID();
       SseEmitter previous = new SseEmitter();
       SseEmitter next = new SseEmitter();
-      sseEmitterRepository.save(userId, previous, SNAPSHOT_AT);
+      sseEmitterRepository.save(userId, previous, SNAPSHOT_SEQ);
 
       // when
-      sseEmitterRepository.save(userId, next, SNAPSHOT_AT);
+      sseEmitterRepository.save(userId, next, SNAPSHOT_SEQ);
 
       // then
       assertThat(sseEmitterRepository.findByUserId(userId)).contains(next);
@@ -71,37 +69,38 @@ class SseEmitterRepositoryTest {
   }
 
   @Nested
-  @DisplayName("재연결 시 이전 emitter 정리")
+  @DisplayName("재연결 시 이전 연결 반환")
   class ReplaceOnReconnect {
 
     @Test
-    @DisplayName("같은_userId로_새_emitter를_저장하면_이전_emitter를_complete로_종료한다")
-    void 같은_userId로_새_emitter를_저장하면_이전_emitter를_complete로_종료한다() {
+    @DisplayName("같은_userId로_새_emitter를_저장하면_이전_연결을_Optional로_반환한다")
+    void 같은_userId로_새_emitter를_저장하면_이전_연결을_Optional로_반환한다() {
       // given
       UUID userId = UUID.randomUUID();
       SseEmitter previous = mock(SseEmitter.class);
       SseEmitter next = new SseEmitter();
-      sseEmitterRepository.save(userId, previous, SNAPSHOT_AT);
+      sseEmitterRepository.save(userId, previous, SNAPSHOT_SEQ);
 
       // when
-      sseEmitterRepository.save(userId, next, SNAPSHOT_AT);
+      Optional<EmitterConnection> result = sseEmitterRepository.save(userId, next, SNAPSHOT_SEQ);
 
-      // then
-      verify(previous).complete();
+      // then — complete() 호출 여부는 더 이상 여기서 검증하지 않는다(호출부 SseService.connect()의 책임)
+      assertThat(result).isPresent();
+      assertThat(result.get().emitter()).isSameAs(previous);
     }
 
     @Test
-    @DisplayName("최초_저장이면_기존_emitter가_없어_complete를_호출하지_않는다")
-    void 최초_저장이면_기존_emitter가_없어_complete를_호출하지_않는다() {
+    @DisplayName("최초_저장이면_빈_Optional을_반환한다")
+    void 최초_저장이면_빈_Optional을_반환한다() {
       // given
       UUID userId = UUID.randomUUID();
-      SseEmitter emitter = mock(SseEmitter.class);
 
       // when
-      sseEmitterRepository.save(userId, emitter, SNAPSHOT_AT);
+      Optional<EmitterConnection> result =
+          sseEmitterRepository.save(userId, mock(SseEmitter.class), SNAPSHOT_SEQ);
 
       // then
-      verify(emitter, never()).complete();
+      assertThat(result).isEmpty();
     }
   }
 
@@ -115,7 +114,7 @@ class SseEmitterRepositoryTest {
       // given
       UUID userId = UUID.randomUUID();
       SseEmitter emitter = new SseEmitter();
-      sseEmitterRepository.save(userId, emitter, SNAPSHOT_AT);
+      sseEmitterRepository.save(userId, emitter, SNAPSHOT_SEQ);
 
       // when
       sseEmitterRepository.remove(userId, emitter);
@@ -131,8 +130,8 @@ class SseEmitterRepositoryTest {
       UUID userId = UUID.randomUUID();
       SseEmitter previous = new SseEmitter();
       SseEmitter next = new SseEmitter();
-      sseEmitterRepository.save(userId, previous, SNAPSHOT_AT);
-      sseEmitterRepository.save(userId, next, SNAPSHOT_AT);
+      sseEmitterRepository.save(userId, previous, SNAPSHOT_SEQ);
+      sseEmitterRepository.save(userId, next, SNAPSHOT_SEQ);
 
       // when
       sseEmitterRepository.remove(userId, previous);
@@ -154,8 +153,8 @@ class SseEmitterRepositoryTest {
       UUID userId2 = UUID.randomUUID();
       SseEmitter emitter1 = new SseEmitter();
       SseEmitter emitter2 = new SseEmitter();
-      sseEmitterRepository.save(userId1, emitter1, SNAPSHOT_AT);
-      sseEmitterRepository.save(userId2, emitter2, SNAPSHOT_AT);
+      sseEmitterRepository.save(userId1, emitter1, SNAPSHOT_SEQ);
+      sseEmitterRepository.save(userId2, emitter2, SNAPSHOT_SEQ);
 
       // when & then
       assertThat(sseEmitterRepository.findAll())
@@ -166,31 +165,31 @@ class SseEmitterRepositoryTest {
 
   @Nested
   @DisplayName("재생 스냅샷 조회")
-  class FindSnapshotAt {
+  class FindSnapshotSeq {
 
     @Test
-    @DisplayName("저장한_스냅샷_시각을_그대로_조회할_수_있다")
-    void 저장한_스냅샷_시각을_그대로_조회할_수_있다() {
+    @DisplayName("저장한_스냅샷_seq를_그대로_조회할_수_있다")
+    void 저장한_스냅샷_seq를_그대로_조회할_수_있다() {
       // given
       UUID userId = UUID.randomUUID();
       SseEmitter emitter = new SseEmitter();
 
       // when
-      sseEmitterRepository.save(userId, emitter, SNAPSHOT_AT);
+      sseEmitterRepository.save(userId, emitter, SNAPSHOT_SEQ);
 
       // then
-      assertThat(sseEmitterRepository.findSnapshotAt(userId)).contains(SNAPSHOT_AT);
+      assertThat(sseEmitterRepository.findSnapshotSeq(userId)).contains(SNAPSHOT_SEQ);
     }
 
     @Test
     @DisplayName("존재하지_않는_유저를_조회하면_빈_Optional을_반환한다")
     void 존재하지_않는_유저를_조회하면_빈_Optional을_반환한다() {
-      assertThat(sseEmitterRepository.findSnapshotAt(UUID.randomUUID())).isEmpty();
+      assertThat(sseEmitterRepository.findSnapshotSeq(UUID.randomUUID())).isEmpty();
     }
 
     @Test
-    @DisplayName("스냅샷_시각이_null로_저장되면_빈_Optional을_반환한다")
-    void 스냅샷_시각이_null로_저장되면_빈_Optional을_반환한다() {
+    @DisplayName("스냅샷_seq가_null로_저장되면_빈_Optional을_반환한다")
+    void 스냅샷_seq가_null로_저장되면_빈_Optional을_반환한다() {
       // given
       UUID userId = UUID.randomUUID();
       SseEmitter emitter = new SseEmitter();
@@ -199,7 +198,7 @@ class SseEmitterRepositoryTest {
       sseEmitterRepository.save(userId, emitter, null);
 
       // then
-      assertThat(sseEmitterRepository.findSnapshotAt(userId)).isEmpty();
+      assertThat(sseEmitterRepository.findSnapshotSeq(userId)).isEmpty();
     }
   }
 }
