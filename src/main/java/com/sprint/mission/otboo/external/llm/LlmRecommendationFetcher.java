@@ -18,7 +18,10 @@ public class LlmRecommendationFetcher {
 
   private static final String SYSTEM_PROMPT = """
       당신은 날씨에 맞는 옷차림을 추천하는 스타일리스트입니다.
-      주어진 날씨 정보와 후보 의상 목록 중에서 가장 적절한 조합을 선택하세요.
+      주어진 날씨 정보를 보고, 후보 의상 목록에서 그 날씨에 입을 만한 의상을 골라주세요.
+      완성된 한 벌이 아니라 추천할 만한 의상들을 모아주세요.
+      같은 type(종류)에서 여러 벌을 골라도 됩니다. type마다 최대 3벌까지 골라주세요.
+      날씨에 어울리지 않는 의상은 빼주세요.
       후보 목록에 없는 clothesId는 절대 포함하지 마세요.
       다른 텍스트 없이 아래 JSON 형식으로만 응답하세요.
       {"clothesIds": ["후보 중에서 선택한 clothesId", ...]}

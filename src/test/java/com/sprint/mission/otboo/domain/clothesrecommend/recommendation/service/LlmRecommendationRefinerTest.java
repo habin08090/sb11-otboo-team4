@@ -43,116 +43,96 @@ class LlmRecommendationRefinerTest {
   }
 
   @Nested
-  @DisplayName("재선정 검증")
-  class Refine {
+  @DisplayName("후보군 선정")
+  class SelectPool {
 
     @Test
-    @DisplayName("LLM이_후보_내에서_유효하게_선택하면_그_결과를_반환한다")
-    void LLM이_후보_내에서_유효하게_선택하면_그_결과를_반환한다() {
+    @DisplayName("LLM이_후보_내에서_고르면_그_후보군을_반환한다")
+    void LLM이_후보_내에서_고르면_그_후보군을_반환한다() {
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       Clothes bottom = Clothes.create(UUID.randomUUID(), "청바지", ClothesType.BOTTOM);
       List<Clothes> candidates = List.of(top, bottom);
-      List<Clothes> fallback = List.of(top);
 
       given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
           .willReturn(new LlmSelectedClothes(List.of(top.getId(), bottom.getId())));
 
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
+      List<Clothes> result = refiner().selectPool(context, candidates);
 
       assertThat(result).containsExactly(top, bottom);
     }
 
     @Test
-    @DisplayName("후보에_없는_id가_포함되면_규칙_기반_결과로_폴백한다")
-    void 후보에_없는_id가_포함되면_규칙_기반_결과로_폴백한다() {
-      Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
-      List<Clothes> candidates = List.of(top);
-      List<Clothes> fallback = List.of(top);
-
-      given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
-          .willReturn(new LlmSelectedClothes(List.of(UUID.randomUUID())));
-
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
-
-      assertThat(result).isEqualTo(fallback);
-    }
-
-    @Test
-    @DisplayName("동일_타입이_중복되면_규칙_기반_결과로_폴백한다")
-    void 동일_타입이_중복되면_규칙_기반_결과로_폴백한다() {
+    @DisplayName("같은_종류를_여러_벌_고르면_그대로_후보군에_담는다")
+    void 같은_종류를_여러_벌_고르면_그대로_후보군에_담는다() {
+      // 후보군은 종류당 여러 벌을 담는 것이 정상이다. 한 벌만 남기는 일은 조합 단계에서 한다.
       Clothes top1 = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       Clothes top2 = Clothes.create(UUID.randomUUID(), "셔츠", ClothesType.TOP);
       List<Clothes> candidates = List.of(top1, top2);
-      List<Clothes> fallback = List.of(top1);
 
       given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
           .willReturn(new LlmSelectedClothes(List.of(top1.getId(), top2.getId())));
 
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
+      List<Clothes> result = refiner().selectPool(context, candidates);
 
-      assertThat(result).isEqualTo(fallback);
+      assertThat(result).containsExactly(top1, top2);
     }
 
     @Test
-    @DisplayName("DRESS와_TOP이_동시에_포함되면_규칙_기반_결과로_폴백한다")
-    void DRESS와_TOP이_동시에_포함되면_규칙_기반_결과로_폴백한다() {
+    @DisplayName("DRESS와_TOP이_함께_있어도_후보군에_담는다")
+    void DRESS와_TOP이_함께_있어도_후보군에_담는다() {
+      // 원피스와 상하의의 배타는 최종 조합의 규칙이라 후보군 단계에서는 막지 않는다.
       Clothes dress = Clothes.create(UUID.randomUUID(), "원피스", ClothesType.DRESS);
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       List<Clothes> candidates = List.of(dress, top);
-      List<Clothes> fallback = List.of(dress);
 
       given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
           .willReturn(new LlmSelectedClothes(List.of(dress.getId(), top.getId())));
 
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
+      List<Clothes> result = refiner().selectPool(context, candidates);
 
-      assertThat(result).isEqualTo(fallback);
+      assertThat(result).containsExactly(dress, top);
     }
 
     @Test
-    @DisplayName("DRESS와_BOTTOM이_동시에_포함되면_규칙_기반_결과로_폴백한다")
-    void DRESS와_BOTTOM이_동시에_포함되면_규칙_기반_결과로_폴백한다() {
-      Clothes dress = Clothes.create(UUID.randomUUID(), "원피스", ClothesType.DRESS);
-      Clothes bottom = Clothes.create(UUID.randomUUID(), "청바지", ClothesType.BOTTOM);
-      List<Clothes> candidates = List.of(dress, bottom);
-      List<Clothes> fallback = List.of(dress);
-
-      given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
-          .willReturn(new LlmSelectedClothes(List.of(dress.getId(), bottom.getId())));
-
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
-
-      assertThat(result).isEqualTo(fallback);
-    }
-
-    @Test
-    @DisplayName("LLM_호출이_실패하면_규칙_기반_결과로_폴백한다")
-    void LLM_호출이_실패하면_규칙_기반_결과로_폴백한다() {
+    @DisplayName("후보에_없는_id가_포함되면_후보_전체로_폴백한다")
+    void 후보에_없는_id가_포함되면_후보_전체로_폴백한다() {
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       List<Clothes> candidates = List.of(top);
-      List<Clothes> fallback = List.of(top);
+
+      given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
+          .willReturn(new LlmSelectedClothes(List.of(UUID.randomUUID())));
+
+      List<Clothes> result = refiner().selectPool(context, candidates);
+
+      assertThat(result).isEqualTo(candidates);
+    }
+
+    @Test
+    @DisplayName("LLM_호출이_실패하면_후보_전체로_폴백한다")
+    void LLM_호출이_실패하면_후보_전체로_폴백한다() {
+      Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
+      List<Clothes> candidates = List.of(top);
 
       given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
           .willThrow(LlmApiException.callFailed(new RuntimeException("connection reset")));
 
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
+      List<Clothes> result = refiner().selectPool(context, candidates);
 
-      assertThat(result).isEqualTo(fallback);
+      assertThat(result).isEqualTo(candidates);
     }
 
     @Test
-    @DisplayName("LLM_응답_파싱이_실패하면_규칙_기반_결과로_폴백한다")
-    void LLM_응답_파싱이_실패하면_규칙_기반_결과로_폴백한다() {
+    @DisplayName("LLM_응답_파싱이_실패하면_후보_전체로_폴백한다")
+    void LLM_응답_파싱이_실패하면_후보_전체로_폴백한다() {
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       List<Clothes> candidates = List.of(top);
-      List<Clothes> fallback = List.of(top);
 
       given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
           .willThrow(LlmApiException.parseFailed());
 
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
+      List<Clothes> result = refiner().selectPool(context, candidates);
 
-      assertThat(result).isEqualTo(fallback);
+      assertThat(result).isEqualTo(candidates);
     }
   }
 
@@ -161,19 +141,18 @@ class LlmRecommendationRefinerTest {
   class CacheHit {
 
     @Test
-    @DisplayName("캐시에_값이_있으면_LLM을_호출하지_않고_캐시_결과를_반환한다")
-    void 캐시에_값이_있으면_LLM을_호출하지_않고_캐시_결과를_반환한다() {
+    @DisplayName("캐시에_값이_있으면_LLM을_호출하지_않고_캐시_후보군을_반환한다")
+    void 캐시에_값이_있으면_LLM을_호출하지_않고_캐시_후보군을_반환한다() {
       // given
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       Clothes bottom = Clothes.create(UUID.randomUUID(), "청바지", ClothesType.BOTTOM);
       List<Clothes> candidates = List.of(top, bottom);
-      List<Clothes> fallback = List.of(top);
 
       given(recommendationCacheStore.find(context))
           .willReturn(Optional.of(List.of(top.getId(), bottom.getId())));
 
       // when
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
+      List<Clothes> result = refiner().selectPool(context, candidates);
 
       // then
       assertThat(result).containsExactly(top, bottom);
@@ -187,7 +166,6 @@ class LlmRecommendationRefinerTest {
       // given
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       List<Clothes> candidates = List.of(top);
-      List<Clothes> fallback = List.of(top);
 
       given(recommendationCacheStore.find(context))
           .willReturn(Optional.of(List.of(UUID.randomUUID())));
@@ -195,7 +173,7 @@ class LlmRecommendationRefinerTest {
           .willReturn(new LlmSelectedClothes(List.of(top.getId())));
 
       // when
-      List<Clothes> result = refiner().refine(context, candidates, fallback);
+      List<Clothes> result = refiner().selectPool(context, candidates);
 
       // then
       assertThat(result).containsExactly(top);
@@ -208,19 +186,18 @@ class LlmRecommendationRefinerTest {
   class CacheSave {
 
     @Test
-    @DisplayName("캐시가_비면_LLM_선택_결과를_캐시에_저장한다")
-    void 캐시가_비면_LLM_선택_결과를_캐시에_저장한다() {
+    @DisplayName("캐시가_비면_LLM_후보군을_캐시에_저장한다")
+    void 캐시가_비면_LLM_후보군을_캐시에_저장한다() {
       // given
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       Clothes bottom = Clothes.create(UUID.randomUUID(), "청바지", ClothesType.BOTTOM);
       List<Clothes> candidates = List.of(top, bottom);
-      List<Clothes> fallback = List.of(top);
 
       given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
           .willReturn(new LlmSelectedClothes(List.of(top.getId(), bottom.getId())));
 
       // when
-      refiner().refine(context, candidates, fallback);
+      refiner().selectPool(context, candidates);
 
       // then
       verify(recommendationCacheStore).save(context, List.of(top.getId(), bottom.getId()));
@@ -232,32 +209,29 @@ class LlmRecommendationRefinerTest {
       // given
       Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
       List<Clothes> candidates = List.of(top);
-      List<Clothes> fallback = List.of(top);
 
       given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
           .willThrow(LlmApiException.callFailed(new RuntimeException("connection reset")));
 
       // when
-      refiner().refine(context, candidates, fallback);
+      refiner().selectPool(context, candidates);
 
       // then
       verify(recommendationCacheStore, never()).save(any(LlmRecommendationContext.class), anyList());
     }
 
     @Test
-    @DisplayName("LLM_선택이_검증에_실패해_폴백하면_캐시에_저장하지_않는다")
-    void LLM_선택이_검증에_실패해_폴백하면_캐시에_저장하지_않는다() {
+    @DisplayName("후보에_없는_id가_섞여_폴백하면_캐시에_저장하지_않는다")
+    void 후보에_없는_id가_섞여_폴백하면_캐시에_저장하지_않는다() {
       // given
-      Clothes top1 = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
-      Clothes top2 = Clothes.create(UUID.randomUUID(), "셔츠", ClothesType.TOP);
-      List<Clothes> candidates = List.of(top1, top2);
-      List<Clothes> fallback = List.of(top1);
+      Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
+      List<Clothes> candidates = List.of(top);
 
       given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
-          .willReturn(new LlmSelectedClothes(List.of(top1.getId(), top2.getId())));
+          .willReturn(new LlmSelectedClothes(List.of(top.getId(), UUID.randomUUID())));
 
       // when
-      refiner().refine(context, candidates, fallback);
+      refiner().selectPool(context, candidates);
 
       // then
       verify(recommendationCacheStore, never()).save(any(LlmRecommendationContext.class), anyList());

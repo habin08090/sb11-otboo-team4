@@ -1,6 +1,5 @@
 package com.sprint.mission.otboo.domain.clothesrecommend.recommendation.service;
 
-import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.entity.Clothes;
 import com.sprint.mission.otboo.domain.clothesrecommend.recommendation.cache.RecommendationCacheStore;
 import com.sprint.mission.otboo.external.llm.LlmRecommendationFetcher;
@@ -11,7 +10,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -27,8 +25,15 @@ public class LlmRecommendationRefiner {
   private final LlmRecommendationFetcher llmRecommendationFetcher;
   private final RecommendationCacheStore recommendationCacheStore;
 
-  public List<Clothes> refine(LlmRecommendationContext context, List<Clothes> candidates,
-      List<Clothes> fallback) {
+  /**
+   * LLM이 추린 추천 후보군을 돌려준다.
+   *
+   * <p>완성된 조합이 아니라 후보군을 돌려주는 이유는, 최종 조합을 매 요청마다 다르게 구성하기 위해서다. 조합을 캐싱하면 옷장이 그대로인 한 항상 같은 답이 나와
+   * "다른 옷 추천"이 동작하지 않는다. 조합 구성은 {@link OutfitComposer}가 맡는다.
+   *
+   * <p>LLM 호출이나 검증에 실패하면 후보 전체를 그대로 돌려준다. 추천 자체를 실패시키는 것보다 낫다.
+   */
+  public List<Clothes> selectPool(LlmRecommendationContext context, List<Clothes> candidates) {
     Map<UUID, Clothes> candidatesById = candidates.stream()
         .collect(Collectors.toMap(Clothes::getId, Function.identity()));
 
@@ -41,14 +46,14 @@ public class LlmRecommendationRefiner {
     try {
       selected = llmRecommendationFetcher.select(context);
     } catch (LlmException e) {
-      log.error("LLM 추천 재선정 실패, 규칙 기반 결과로 대체", e);
-      return fallback;
+      log.error("LLM 추천 후보군 선정 실패, 후보 전체로 대체", e);
+      return candidates;
     }
 
     Optional<List<Clothes>> resolved = resolve(selected.clothesIds(), candidatesById);
     if (resolved.isEmpty()) {
-      log.warn("LLM 선택이 검증을 통과하지 못함, 규칙 기반 결과로 대체");
-      return fallback;
+      log.warn("LLM 후보군이 검증을 통과하지 못함, 후보 전체로 대체");
+      return candidates;
     }
 
     recommendationCacheStore.save(context, selected.clothesIds());
@@ -76,6 +81,10 @@ public class LlmRecommendationRefiner {
     return cached;
   }
 
+  /**
+   * 후보군은 종류당 여러 벌을 담으므로 종류 중복을 막지 않는다. 종류 중복 없음과 원피스·상하의 배타는 최종 조합의 규칙이라 {@link OutfitComposer}가
+   * 보장한다. 여기서는 LLM이 후보에 없는 의상을 지어내지 않았는지만 확인한다.
+   */
   private Optional<List<Clothes>> resolve(List<UUID> clothesIds,
       Map<UUID, Clothes> candidatesById) {
     List<Clothes> resolved = new ArrayList<>();
@@ -87,29 +96,6 @@ public class LlmRecommendationRefiner {
       }
       resolved.add(clothes);
     }
-
-    if (hasDuplicateType(resolved)) {
-      log.warn("선택에 동일 타입이 중복됨");
-      return Optional.empty();
-    }
-
-    if (hasDressWithTopOrBottom(resolved)) {
-      log.warn("선택에 DRESS와 TOP/BOTTOM이 동시에 포함됨");
-      return Optional.empty();
-    }
-
     return Optional.of(resolved);
-  }
-
-  private boolean hasDuplicateType(List<Clothes> clothesList) {
-    Set<ClothesType> types = clothesList.stream().map(Clothes::getType).collect(Collectors.toSet());
-    return types.size() != clothesList.size();
-  }
-
-  private boolean hasDressWithTopOrBottom(List<Clothes> clothesList) {
-    Set<ClothesType> types = clothesList.stream().map(Clothes::getType).collect(Collectors.toSet());
-    boolean hasDress = types.contains(ClothesType.DRESS);
-    boolean hasTopOrBottom = types.contains(ClothesType.TOP) || types.contains(ClothesType.BOTTOM);
-    return hasDress && hasTopOrBottom;
   }
 }

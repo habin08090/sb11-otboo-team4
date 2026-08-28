@@ -46,6 +46,7 @@ public class RecommendationService {
   private final ClothesRepository clothesRepository;
   private final RecommendationOotdAssembler recommendationOotdAssembler;
   private final LlmRecommendationRefiner llmRecommendationRefiner;
+  private final OutfitComposer outfitComposer;
 
   public RecommendationDto recommend(UUID weatherId, UUID userId) {
     Weather weather = weatherRepository.findById(weatherId)
@@ -70,14 +71,13 @@ public class RecommendationService {
       return new RecommendationDto(weatherId, userId, List.of());
     }
 
-    List<Clothes> ruleBasedSelection = selectClothesByType(userClothes, recommendedTypes);
-
     LlmRecommendationContext llmContext = buildLlmContext(
         weather.getTemperatureCurrent(), adjustedTemp,
         weather.getPrecipitationType(), weather.getWindAsWord(),
         profile.getTemperatureSensitivity(), userClothes);
-    List<Clothes> selectedClothes = llmRecommendationRefiner.refine(
-        llmContext, userClothes, ruleBasedSelection);
+    List<Clothes> pool = llmRecommendationRefiner.selectPool(llmContext, userClothes);
+
+    List<Clothes> selectedClothes = outfitComposer.compose(pool, recommendedTypes);
 
     List<OotdDto> ootdList = recommendationOotdAssembler.toOotdDtoList(selectedClothes);
 
@@ -104,6 +104,10 @@ public class RecommendationService {
   Set<ClothesType> getRecommendedTypes(double adjustedTemp) {
     Set<ClothesType> types = EnumSet.noneOf(ClothesType.class);
     types.add(ClothesType.SHOES);
+    // 날씨와 무관하지만 코디를 이루는 품목이라 항상 후보에 넣는다.
+    // UNDERWEAR·ETC는 OOTD에 어울리지 않거나 성격이 섞여 있어 제외한다.
+    types.add(ClothesType.BAG);
+    types.add(ClothesType.ACCESSORY);
 
     if (adjustedTemp <= VERY_COLD_MAX) {
       types.addAll(EnumSet.of(
@@ -152,38 +156,4 @@ public class RecommendationService {
     }
   }
 
-  List<Clothes> selectClothesByType(List<Clothes> userClothes,
-      Set<ClothesType> recommendedTypes) {
-    List<Clothes> selected = new ArrayList<>();
-    boolean dressSelected = false;
-
-    // DRESS가 후보에 있으면 먼저 확인 — DRESS가 있으면 TOP/BOTTOM 대체
-    if (recommendedTypes.contains(ClothesType.DRESS)) {
-      userClothes.stream()
-          .filter(c -> c.getType() == ClothesType.DRESS)
-          .max(Comparator.comparing(Clothes::getCreatedAt)
-              .thenComparing(Clothes::getId))
-          .ifPresent(selected::add);
-      dressSelected = !selected.isEmpty();
-    }
-
-    for (ClothesType type : recommendedTypes) {
-      // DRESS는 이미 처리됨
-      if (type == ClothesType.DRESS) {
-        continue;
-      }
-      // DRESS가 선택됐으면 TOP/BOTTOM은 건너뜀
-      if (dressSelected && (type == ClothesType.TOP || type == ClothesType.BOTTOM)) {
-        continue;
-      }
-
-      userClothes.stream()
-          .filter(c -> c.getType() == type)
-          .max(Comparator.comparing(Clothes::getCreatedAt)
-              .thenComparing(Clothes::getId))
-          .ifPresent(selected::add);
-    }
-
-    return selected;
-  }
 }
