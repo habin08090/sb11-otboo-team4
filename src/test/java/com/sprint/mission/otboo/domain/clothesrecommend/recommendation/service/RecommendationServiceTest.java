@@ -547,6 +547,106 @@ class RecommendationServiceTest {
   }
 
   @Nested
+  @DisplayName("후보군 종류 보정")
+  class TypeCoverage {
+
+    @Test
+    @DisplayName("LLM이 특정 종류를 통째로 빠뜨려도 보유한 옷으로 채워 넣는다")
+    void LLM이_특정_종류를_통째로_빠뜨려도_보유한_옷으로_채워_넣는다() {
+      // given - LLM 후보군에 신발이 없지만 사용자는 신발을 가지고 있다
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(25.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes top = createClothes(userId, "반팔", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
+      Clothes shoes = createClothes(userId, "운동화", ClothesType.SHOES);
+      Clothes bag = createClothes(userId, "백팩", ClothesType.BAG);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(List.of(top, bottom, shoes, bag));
+      given(llmRecommendationRefiner.selectPool(any(), any()))
+          .willReturn(List.of(top, bottom));
+      given(recommendationMapper.toOotdDtoList(any()))
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then
+      assertThat(result.clothes()).extracting(OotdDto::type)
+          .contains(ClothesType.SHOES, ClothesType.BAG);
+    }
+
+    @Test
+    @DisplayName("보유하지 않은 종류는 채워 넣지 않는다")
+    void 보유하지_않은_종류는_채워_넣지_않는다() {
+      // given - 신발을 아예 가지고 있지 않다
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(25.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes top = createClothes(userId, "반팔", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(List.of(top, bottom));
+      given(llmRecommendationRefiner.selectPool(any(), any()))
+          .willReturn(List.of(top, bottom));
+      given(recommendationMapper.toOotdDtoList(any()))
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
+
+      // when
+      RecommendationDto result = recommendationService.recommend(weatherId, userId);
+
+      // then
+      assertThat(result.clothes()).extracting(OotdDto::type)
+          .doesNotContain(ClothesType.SHOES);
+    }
+
+    @Test
+    @DisplayName("LLM이 고른 종류는 LLM 선택을 그대로 존중한다")
+    void LLM이_고른_종류는_LLM_선택을_그대로_존중한다() {
+      // given - 상의는 LLM이 한 벌만 골랐다. 보정이 나머지 상의를 되살리면 안 된다.
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(25.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Clothes pickedTop = createClothes(userId, "LLM이 고른 반팔", ClothesType.TOP);
+      Clothes ignoredTop = createClothes(userId, "LLM이 뺀 니트", ClothesType.TOP);
+      Clothes bottom = createClothes(userId, "반바지", ClothesType.BOTTOM);
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(List.of(pickedTop, ignoredTop, bottom));
+      given(llmRecommendationRefiner.selectPool(any(), any()))
+          .willReturn(List.of(pickedTop, bottom));
+      given(recommendationMapper.toOotdDtoList(any()))
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
+
+      // when & then
+      for (int i = 0; i < 20; i++) {
+        assertThat(recommendationService.recommend(weatherId, userId).clothes())
+            .noneMatch(ootd -> ootd.name().equals("LLM이 뺀 니트"));
+      }
+    }
+  }
+
+  @Nested
   @DisplayName("추천 결과 다양성")
   class Variety {
 

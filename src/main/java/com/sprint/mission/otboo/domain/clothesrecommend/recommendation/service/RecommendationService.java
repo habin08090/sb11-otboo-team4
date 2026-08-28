@@ -20,6 +20,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -73,7 +75,8 @@ public class RecommendationService {
         weather.getTemperatureCurrent(), adjustedTemp,
         weather.getPrecipitationType(), weather.getWindAsWord(),
         profile.getTemperatureSensitivity(), userClothes);
-    List<Clothes> pool = llmRecommendationRefiner.selectPool(llmContext, userClothes);
+    List<Clothes> pool = coverMissingTypes(
+        llmRecommendationRefiner.selectPool(llmContext, userClothes), userClothes);
 
     List<Clothes> selectedClothes = outfitComposer.compose(pool, recommendedTypes);
 
@@ -82,6 +85,31 @@ public class RecommendationService {
     log.info("추천 완료 weatherId={}, 추천 의상 수={}", weatherId, ootdList.size());
 
     return new RecommendationDto(weatherId, userId, ootdList);
+  }
+
+  /**
+   * LLM이 통째로 빠뜨린 종류를 보유 의상으로 메운다.
+   *
+   * <p>LLM은 후보군을 고를 때 신발이나 가방처럼 특정 종류를 아예 언급하지 않을 때가 있다. 그대로 두면 신발 없는 코디가 추천된다. 프롬프트로 부탁하는 것만으로는
+   * 보장되지 않아 코드로 메운다.
+   *
+   * <p>LLM이 한 벌이라도 고른 종류는 건드리지 않는다. 그 종류에 대해서는 LLM의 판단을 존중한다.
+   */
+  List<Clothes> coverMissingTypes(List<Clothes> pool, List<Clothes> userClothes) {
+    Set<ClothesType> coveredTypes = pool.stream()
+        .map(Clothes::getType)
+        .collect(Collectors.toSet());
+
+    List<Clothes> missing = userClothes.stream()
+        .filter(clothes -> !coveredTypes.contains(clothes.getType()))
+        .toList();
+
+    if (missing.isEmpty()) {
+      return pool;
+    }
+
+    log.debug("LLM 후보군에 빠진 종류를 보유 의상으로 보정한다 보정수={}", missing.size());
+    return Stream.concat(pool.stream(), missing.stream()).toList();
   }
 
   LlmRecommendationContext buildLlmContext(double currentTemp, double adjustedTemp,
