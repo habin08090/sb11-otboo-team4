@@ -20,16 +20,18 @@ import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageBro
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageDto;
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageSendRequest;
 import com.sprint.mission.otboo.domain.social.directmessage.service.DirectMessageService;
+import com.sprint.mission.otboo.global.init.ChatBotInitializer;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import tools.jackson.databind.ObjectMapper;
@@ -37,8 +39,7 @@ import tools.jackson.databind.ObjectMapper;
 @ExtendWith(MockitoExtension.class)
 class ChatbotConversationServiceTest {
 
-  private static final UUID CHATBOT_USER_ID =
-      UUID.fromString("00000000-0000-0000-0000-000000000001");
+  private static final UUID CHATBOT_USER_ID = ChatBotInitializer.CHAT_BOT_USER_ID;
   private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
   private static final String QUESTION = "오늘 뭐 입을까?";
 
@@ -51,8 +52,10 @@ class ChatbotConversationServiceTest {
   @Mock
   StringRedisTemplate stringRedisTemplate;
 
+  @Spy
   ObjectMapper objectMapper = new ObjectMapper();
 
+  @InjectMocks
   ChatbotConversationService chatbotConversationService;
 
   @BeforeAll
@@ -61,13 +64,6 @@ class ChatbotConversationServiceTest {
         .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
         .plugin(new JakartaValidationPlugin())
         .build();
-  }
-
-  @BeforeEach
-  void setUp() {
-    chatbotConversationService = new ChatbotConversationService(
-        chatbotAnswerService, directMessageService, stringRedisTemplate, objectMapper,
-        CHATBOT_USER_ID);
   }
 
   private static ChatbotAskRequest askRequest(UUID receiverId, UUID weatherId) {

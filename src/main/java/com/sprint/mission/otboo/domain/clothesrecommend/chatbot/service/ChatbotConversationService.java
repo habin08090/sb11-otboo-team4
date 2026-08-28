@@ -8,9 +8,10 @@ import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageDto
 import com.sprint.mission.otboo.domain.social.directmessage.dto.DirectMessageSendRequest;
 import com.sprint.mission.otboo.domain.social.directmessage.service.DirectMessageService;
 import com.sprint.mission.otboo.domain.social.directmessage.util.StompDestinationUtil;
+import com.sprint.mission.otboo.global.init.ChatBotInitializer;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -27,35 +28,27 @@ import tools.jackson.databind.ObjectMapper;
  * {@link DirectMessageService#send}가 자체 트랜잭션으로 처리한다.
  */
 @Slf4j
+@RequiredArgsConstructor
 @Service
 public class ChatbotConversationService {
+
+  /** 계정을 만드는 쪽과 같은 값을 봐야 하므로 상수를 그대로 참조한다. 양쪽에 UUID를 따로 적어두면 한쪽만 바뀔 때 조용히 어긋난다. */
+  private static final UUID CHATBOT_USER_ID = ChatBotInitializer.CHAT_BOT_USER_ID;
 
   private final ChatbotAnswerService chatbotAnswerService;
   private final DirectMessageService directMessageService;
   private final StringRedisTemplate stringRedisTemplate;
   private final ObjectMapper objectMapper;
-  private final UUID chatbotUserId;
-
-  public ChatbotConversationService(ChatbotAnswerService chatbotAnswerService,
-      DirectMessageService directMessageService, StringRedisTemplate stringRedisTemplate,
-      ObjectMapper objectMapper,
-      @Value("${chatbot.user-id:00000000-0000-0000-0000-000000000001}") UUID chatbotUserId) {
-    this.chatbotAnswerService = chatbotAnswerService;
-    this.directMessageService = directMessageService;
-    this.stringRedisTemplate = stringRedisTemplate;
-    this.objectMapper = objectMapper;
-    this.chatbotUserId = chatbotUserId;
-  }
 
   public void ask(UUID currentUserId, ChatbotAskRequest request) {
     sendAndBroadcast(
-        new DirectMessageSendRequest(request.senderId(), chatbotUserId, request.content()),
+        new DirectMessageSendRequest(request.senderId(), CHATBOT_USER_ID, request.content()),
         currentUserId);
 
     String answer = answerOrGuide(currentUserId, request);
 
     sendAndBroadcast(
-        new DirectMessageSendRequest(chatbotUserId, currentUserId, answer), chatbotUserId);
+        new DirectMessageSendRequest(CHATBOT_USER_ID, currentUserId, answer), CHATBOT_USER_ID);
   }
 
   /**
