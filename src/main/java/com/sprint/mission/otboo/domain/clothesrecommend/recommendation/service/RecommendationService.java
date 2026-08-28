@@ -16,8 +16,6 @@ import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.
 import com.sprint.mission.otboo.domain.weathernotification.weather.repository.WeatherRepository;
 import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationCandidate;
 import com.sprint.mission.otboo.external.llm.dto.LlmRecommendationContext;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
