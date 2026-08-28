@@ -29,10 +29,6 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID>, Weather
   List<Weather> findAllByWeatherGridAndForecastAtGreaterThanEqual(
       @Param("weatherGrid") WeatherGrid weatherGrid, @Param("from") Instant from);
 
-  // D1 급변 알림의 D2 스냅샷 캡처 전용(#163) - target_date 하루치(24시간) 슬롯만 조회한다.
-  List<Weather> findAllByWeatherGridAndForecastAtGreaterThanEqualAndForecastAtLessThan(
-      WeatherGrid weatherGrid, Instant from, Instant to);
-
   // saveSlots()가 upsert 후 현재 DB 상태를 되돌려 받는 용도(#243) - forecastedAt으로 필터링하지
   // 않는다. upsert 역행 방지 가드에 걸려 이번 호출의 forecastedAt으로 갱신되지 않은 슬롯도
   // 결과에 포함시켜야, 호출부가 그 슬롯을 "재조회 실패"로 오판해 다음 요청에서도 반복 재조회하지
@@ -47,7 +43,7 @@ public interface WeatherRepository extends JpaRepository<Weather, UUID>, Weather
 
   // D0/D1 급변 알림 청크 배치 전용(#163) - 청크 안 그리드 전체의 D0/D1 대상 날짜 24시간 슬롯을
   // 그리드별 개별 조회 대신 IN 절 하나로 묶어 쿼리 1번에 끝낸다.
-  List<Weather> findAllByWeatherGridIdInAndForecastAtGreaterThanEqualAndForecastAtLessThan(
+  List<Weather> findAllByWeatherGridIdInAndForecastAtGreaterThanEqualAndForecastAtLessThanOrderByForecastAtAsc(
       List<UUID> weatherGridIds, Instant from, Instant to);
 
   @Query("SELECT DISTINCT w.weatherGrid FROM Weather w WHERE w.forecastedAt = :forecastedAt")

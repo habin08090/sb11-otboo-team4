@@ -1,6 +1,7 @@
 package com.sprint.mission.otboo.external.kma;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
@@ -101,8 +102,9 @@ class KmaForecastParserTest {
       assertThat(hour1.temperatureCurrent()).isEqualTo(16.0);
       assertThat(hour1.skyStatus()).isEqualTo(SkyStatus.CLEAR);
       assertThat(hour1.precipitationType()).isEqualTo(PrecipitationType.NONE);
-      assertThat(hour1.precipitationProbability()).isEqualTo(0.0);
-      assertThat(hour1.precipitationAmount()).isEqualTo(0.0);
+      // POP/PCP는 하루 대표값이라 PTY와 달리 이 슬롯에도 0시 슬롯과 동일한 값이 적용된다
+      assertThat(hour1.precipitationProbability()).isEqualTo(60.0);
+      assertThat(hour1.precipitationAmount()).isEqualTo(5.0);
       assertThat(hour1.humidityCurrent()).isEqualTo(0.0);
       assertThat(hour1.windSpeed()).isEqualTo(0.0);
     }
@@ -251,6 +253,49 @@ class KmaForecastParserTest {
             assertThat(logEvent.getLevel()).isEqualTo(Level.WARN);
             assertThat(logEvent.getFormattedMessage()).contains("PTY").contains("9");
           });
+    }
+
+    @Test
+    @DisplayName("PTY_값이_null이면_강수형태를_NONE으로_두고_NPE_없이_파싱한다")
+    void PTY_값이_null이면_강수형태를_NONE으로_두고_NPE_없이_파싱한다() {
+      // given - 기상청 응답에서 PTY 항목의 fcstValue가 null인 경우(결측)
+      List<Item> items = new ArrayList<>();
+      for (int hour = 0; hour < 4; hour++) {
+        items.add(item("TMP", "20260824", "%02d00".formatted(hour), String.valueOf(20 + hour)));
+      }
+      items.add(item("PTY", "20260824", "0000", null));
+      KmaWeatherResponse response = responseOf(items);
+
+      // when / then
+      assertThatCode(() -> parser.parseSlotForecast(response)).doesNotThrowAnyException();
+      WeatherForecastSlotDto hour0 = parser.parseSlotForecast(response).stream()
+          .filter(dto -> dto.slotAt().equals(
+              LocalDate.of(2026, 8, 24).atTime(0, 0).atZone(ZoneId.of("Asia/Seoul")).toInstant()))
+          .findFirst().orElseThrow();
+      assertThat(hour0.precipitationType()).isEqualTo(PrecipitationType.NONE);
+    }
+
+    @Test
+    @DisplayName("POP는_하루_최댓값_PCP는_하루_합계로_모든_슬롯에_동일하게_적용된다")
+    void POP는_하루_최댓값_PCP는_하루_합계로_모든_슬롯에_동일하게_적용된다() {
+      // given - 06시 POP 80/PCP 20mm, 15시 POP 10/PCP 0mm인 날(문서 2번 시나리오)
+      List<Item> items = new ArrayList<>();
+      items.add(item("TMP", "20260824", "0600", "20"));
+      items.add(item("POP", "20260824", "0600", "80"));
+      items.add(item("PCP", "20260824", "0600", "20.0mm"));
+      items.add(item("TMP", "20260824", "1500", "28"));
+      items.add(item("POP", "20260824", "1500", "10"));
+      items.add(item("PCP", "20260824", "1500", "강수없음"));
+      KmaWeatherResponse response = responseOf(items);
+
+      // when
+      List<WeatherForecastSlotDto> result = parser.parseSlotForecast(response);
+
+      // then - 15시 슬롯의 원값(POP 10/PCP 0)이 아니라 하루 대표값(80/20.0)이 모든 슬롯에 똑같이 적용된다
+      assertThat(result).extracting(WeatherForecastSlotDto::precipitationProbability)
+          .containsOnly(80.0);
+      assertThat(result).extracting(WeatherForecastSlotDto::precipitationAmount)
+          .containsOnly(20.0);
     }
 
     @Test

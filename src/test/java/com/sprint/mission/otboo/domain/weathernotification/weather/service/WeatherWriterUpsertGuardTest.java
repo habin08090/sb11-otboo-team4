@@ -2,6 +2,8 @@ package com.sprint.mission.otboo.domain.weathernotification.weather.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.navercorp.fixturemonkey.FixtureMonkey;
+import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.Weather;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.WeatherGrid;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
@@ -25,6 +27,10 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @ActiveProfiles("test")
 class WeatherWriterUpsertGuardTest extends IntegrationTestSupport {
+
+  private static final FixtureMonkey FIXTURE_MONKEY = FixtureMonkey.builder()
+      .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
+      .build();
 
   @Autowired
   private WeatherWriter weatherWriter;
@@ -96,5 +102,41 @@ class WeatherWriterUpsertGuardTest extends IntegrationTestSupport {
     // 빈 리스트로 오판해 재조회 실패로 처리하는 것을 방지한다
     assertThat(result).hasSize(1);
     assertThat(result.get(0).getForecastedAt()).isEqualTo(newerForecastedAt);
+  }
+
+  @Test
+  @DisplayName("같은_슬롯을_다른_값으로_재저장하면_current는_갱신되고_baseline은_최초값을_유지한다")
+  void 같은_슬롯을_다른_값으로_재저장하면_current는_갱신되고_baseline은_최초값을_유지한다() {
+    // given
+    WeatherGrid weatherGrid = weatherGridRepository.save(WeatherGrid.create(60, 127));
+    Instant slotAt = Instant.parse("2026-08-24T12:00:00Z");
+    Instant forecastedAt1 = Instant.parse("2026-08-24T05:00:00Z");
+    Instant forecastedAt2 = Instant.parse("2026-08-24T08:00:00Z"); // 더 최신 - upsert 가드 통과
+    WeatherForecastSlotDto first = FIXTURE_MONKEY.giveMeBuilder(WeatherForecastSlotDto.class)
+        .set("date", LocalDate.of(2026, 8, 24))
+        .set("slotAt", slotAt)
+        .set("skyStatus", SkyStatus.CLEAR)
+        .set("precipitationType", PrecipitationType.NONE)
+        .set("temperatureCurrent", 20.0)
+        .sample();
+    WeatherForecastSlotDto second = FIXTURE_MONKEY.giveMeBuilder(WeatherForecastSlotDto.class)
+        .set("date", LocalDate.of(2026, 8, 24))
+        .set("slotAt", slotAt)
+        .set("skyStatus", SkyStatus.CLEAR)
+        .set("precipitationType", PrecipitationType.NONE)
+        .set("temperatureCurrent", 23.0) // temperatureCurrent만 20.0 -> 23.0
+        .sample();
+
+    // when
+    weatherWriter.saveSlots(weatherGrid, forecastedAt1, List.of(first), Map.of());
+    weatherWriter.saveSlots(weatherGrid, forecastedAt2, List.of(second), Map.of());
+
+    // then
+    List<Weather> all = weatherRepository.findAllByWeatherGridAndForecastAtGreaterThanEqual(
+        weatherGrid, slotAt.minus(1, java.time.temporal.ChronoUnit.DAYS));
+    assertThat(all).hasSize(1);
+    Weather saved = all.get(0);
+    assertThat(saved.getTemperatureCurrent()).isEqualTo(23.0);
+    assertThat(saved.getBaselineTemperatureCurrent()).isEqualTo(20.0);
   }
 }

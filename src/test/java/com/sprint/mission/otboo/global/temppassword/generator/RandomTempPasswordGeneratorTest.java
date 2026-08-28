@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class RandomTempPasswordGeneratorTest {
 
   private static final String ALLOWED_CHARS =
-      "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
+      "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@$";
 
   private final RandomTempPasswordGenerator generator = new RandomTempPasswordGenerator();
 
@@ -39,6 +39,16 @@ class RandomTempPasswordGeneratorTest {
       // then
       assertThat(password.chars().mapToObj(c -> (char) c))
           .allMatch(c -> ALLOWED_CHARS.indexOf(c) >= 0);
+    }
+
+    @Test
+    @DisplayName("생성된 문자열은 영문과 숫자를 모두 포함한다")
+    void 생성된_문자열은_영문과_숫자를_모두_포함한다() {
+      // when
+      String password = generator.generate();
+
+      // then
+      assertThat(password).containsPattern("[A-Za-z]").containsPattern("\\d");
     }
 
     @Test

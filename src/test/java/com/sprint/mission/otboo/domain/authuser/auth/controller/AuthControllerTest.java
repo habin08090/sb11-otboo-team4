@@ -103,6 +103,16 @@ class AuthControllerTest {
     }
 
     @Test
+    @DisplayName("비밀번호 형식이 올바르지 않으면 400을 반환한다")
+    void 비밀번호_형식이_올바르지_않으면_400을_반환한다() throws Exception {
+      // when & then
+      mockMvc.perform(post("/api/auth/sign-in")
+              .param("username", "hong@test.com")
+              .param("password", "1234"))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
     @DisplayName("아이디 또는 비밀번호가 틀리면 401을 반환한다")
     void 아이디_또는_비밀번호가_틀리면_401을_반환한다() throws Exception {
       // given
