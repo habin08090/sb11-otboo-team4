@@ -5,11 +5,13 @@ import com.sprint.mission.otboo.domain.authuser.user.dto.request.ChangePasswordR
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.ProfileUpdateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.UserCreateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.ProfileDto;
+import com.sprint.mission.otboo.domain.authuser.user.dto.response.SocialLinkedStateDto;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.UserDto;
 import com.sprint.mission.otboo.domain.authuser.user.service.UserService;
 import com.sprint.mission.otboo.security.details.CurrentUser;
 import com.sprint.mission.otboo.security.details.UserPrincipal;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -71,5 +73,14 @@ public class UserController implements UserApi {
     return ResponseEntity
         .status(HttpStatus.NO_CONTENT)
         .build();
+  }
+
+  @Override
+  @GetMapping("/social-accounts")
+  public ResponseEntity<List<SocialLinkedStateDto>> getSocialLinkedStates(
+      @CurrentUser UserPrincipal principal) {
+    return ResponseEntity
+        .status(HttpStatus.OK)
+        .body(userService.getSocialLinkedStates(principal.userId()));
   }
 }

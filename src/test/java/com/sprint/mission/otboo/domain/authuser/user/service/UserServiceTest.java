@@ -12,21 +12,25 @@ import com.sprint.mission.otboo.domain.authuser.user.dto.request.LocationRequest
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.ProfileUpdateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.UserCreateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.ProfileDto;
+import com.sprint.mission.otboo.domain.authuser.user.dto.response.SocialLinkedStateDto;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.UserDto;
 import com.sprint.mission.otboo.domain.authuser.user.entity.Location;
 import com.sprint.mission.otboo.domain.authuser.user.entity.Profile;
 import com.sprint.mission.otboo.domain.authuser.user.entity.User;
 import com.sprint.mission.otboo.domain.authuser.user.entity.enums.Gender;
+import com.sprint.mission.otboo.domain.authuser.user.entity.enums.OAuth2Provider;
 import com.sprint.mission.otboo.domain.authuser.user.exception.AccessDeniedException;
 import com.sprint.mission.otboo.domain.authuser.user.exception.DuplicateEmailException;
 import com.sprint.mission.otboo.domain.authuser.user.exception.UserNotFoundException;
 import com.sprint.mission.otboo.domain.authuser.user.mapper.UserMapper;
 import com.sprint.mission.otboo.domain.authuser.user.repository.ProfileRepository;
+import com.sprint.mission.otboo.domain.authuser.user.repository.SocialAccountRepository;
 import com.sprint.mission.otboo.domain.authuser.user.repository.UserRepository;
 import com.sprint.mission.otboo.global.file.storage.FileStorageService;
 import com.sprint.mission.otboo.global.temppassword.registry.TempPasswordRegistry;
 import com.sprint.mission.otboo.security.usersession.registry.UserSessionRegistry;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.hibernate.exception.ConstraintViolationException;
@@ -69,6 +73,9 @@ class UserServiceTest {
 
   @Mock
   private FileStorageService fileStorageService;
+
+  @Mock
+  private SocialAccountRepository socialAccountRepository;
 
   private DataIntegrityViolationException uniqueViolation(String constraintName) {
     ConstraintViolationException cause =
@@ -361,6 +368,61 @@ class UserServiceTest {
       // when & then
       assertThatThrownBy(() -> userService.changePassword(userId, request, userId))
           .isInstanceOf(UserNotFoundException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("소셜 계정 연동 상태 조회 (getSocialLinkedStates)")
+  class GetSocialLinkedStates {
+
+    @Test
+    @DisplayName("연동된 계정이 하나도 없으면 모든 provider가 state=false로 반환된다")
+    void 연동된_계정이_하나도_없으면_모든_provider가_state_false로_반환된다() {
+      // given
+      UUID userId = UUID.randomUUID();
+      given(socialAccountRepository.findLinkedProvidersByUserId(userId)).willReturn(List.of());
+
+      // when
+      List<SocialLinkedStateDto> result = userService.getSocialLinkedStates(userId);
+
+      // then
+      assertThat(result).containsExactlyInAnyOrder(
+          new SocialLinkedStateDto(OAuth2Provider.GOOGLE, false),
+          new SocialLinkedStateDto(OAuth2Provider.KAKAO, false));
+    }
+
+    @Test
+    @DisplayName("구글만 연동되어 있으면 GOOGLE만 state=true로 반환된다")
+    void 구글만_연동되어_있으면_GOOGLE만_state_true로_반환된다() {
+      // given
+      UUID userId = UUID.randomUUID();
+      given(socialAccountRepository.findLinkedProvidersByUserId(userId))
+          .willReturn(List.of(OAuth2Provider.GOOGLE));
+
+      // when
+      List<SocialLinkedStateDto> result = userService.getSocialLinkedStates(userId);
+
+      // then
+      assertThat(result).containsExactlyInAnyOrder(
+          new SocialLinkedStateDto(OAuth2Provider.GOOGLE, true),
+          new SocialLinkedStateDto(OAuth2Provider.KAKAO, false));
+    }
+
+    @Test
+    @DisplayName("구글과 카카오 모두 연동되어 있으면 둘 다 state=true로 반환된다")
+    void 구글과_카카오_모두_연동되어_있으면_둘_다_state_true로_반환된다() {
+      // given
+      UUID userId = UUID.randomUUID();
+      given(socialAccountRepository.findLinkedProvidersByUserId(userId))
+          .willReturn(List.of(OAuth2Provider.GOOGLE, OAuth2Provider.KAKAO));
+
+      // when
+      List<SocialLinkedStateDto> result = userService.getSocialLinkedStates(userId);
+
+      // then
+      assertThat(result).containsExactlyInAnyOrder(
+          new SocialLinkedStateDto(OAuth2Provider.GOOGLE, true),
+          new SocialLinkedStateDto(OAuth2Provider.KAKAO, true));
     }
   }
 }

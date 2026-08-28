@@ -15,7 +15,9 @@ import com.sprint.mission.otboo.domain.authuser.user.dto.request.ChangePasswordR
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.ProfileUpdateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.UserCreateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.ProfileDto;
+import com.sprint.mission.otboo.domain.authuser.user.dto.response.SocialLinkedStateDto;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.UserDto;
+import com.sprint.mission.otboo.domain.authuser.user.entity.enums.OAuth2Provider;
 import com.sprint.mission.otboo.domain.authuser.user.entity.enums.Role;
 import com.sprint.mission.otboo.domain.authuser.user.exception.AccessDeniedException;
 import com.sprint.mission.otboo.domain.authuser.user.exception.DuplicateEmailException;
@@ -286,6 +288,31 @@ class UserControllerTest {
               .contentType(MediaType.APPLICATION_JSON)
               .content(objectMapper.writeValueAsString(request)))
           .andExpect(status().isBadRequest());
+    }
+  }
+
+  @Nested
+  @DisplayName("소셜 계정 연동 상태 조회 - GET /api/users/social-accounts")
+  class GetSocialLinkedStates {
+
+    @Test
+    @DisplayName("인증된 사용자면 200과 provider별 연동 상태 목록을 반환한다")
+    void 인증된_사용자면_200과_provider별_연동_상태_목록을_반환한다() throws Exception {
+      // given
+      UUID userId = UUID.randomUUID();
+      SecurityContextHolder.getContext().setAuthentication(authenticationOf(userId));
+      List<SocialLinkedStateDto> response = List.of(
+          new SocialLinkedStateDto(OAuth2Provider.GOOGLE, true),
+          new SocialLinkedStateDto(OAuth2Provider.KAKAO, false));
+      given(userService.getSocialLinkedStates(userId)).willReturn(response);
+
+      // when & then
+      mockMvc.perform(get("/api/users/social-accounts"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$[0].provider").value("GOOGLE"))
+          .andExpect(jsonPath("$[0].state").value(true))
+          .andExpect(jsonPath("$[1].provider").value("KAKAO"))
+          .andExpect(jsonPath("$[1].state").value(false));
     }
   }
 }

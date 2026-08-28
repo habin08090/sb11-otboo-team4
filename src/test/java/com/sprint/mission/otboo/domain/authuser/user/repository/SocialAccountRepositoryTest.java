@@ -8,6 +8,7 @@ import com.sprint.mission.otboo.domain.authuser.user.entity.User;
 import com.sprint.mission.otboo.domain.authuser.user.entity.enums.OAuth2Provider;
 import com.sprint.mission.otboo.global.config.JpaConfig;
 import com.sprint.mission.otboo.global.config.QuerydslConfig;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -120,6 +121,78 @@ class SocialAccountRepositoryTest {
       // testEntityManager.flush()는 프록시를 안 거치므로 원본 ConstraintViolationException이 그대로 튀어나온다.
       assertThatThrownBy(() -> socialAccountRepository.saveAndFlush(duplicate))
           .isInstanceOf(DataIntegrityViolationException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("사용자 기준 연동된 provider 목록 조회 (findLinkedProvidersByUserId)")
+  class FindLinkedProvidersByUserId {
+
+    @Test
+    @DisplayName("연동된 계정이 없으면 빈 목록을 반환한다")
+    void 연동된_계정이_없으면_빈_목록을_반환한다() {
+      // given
+      User user = persistUser("hong@test.com");
+
+      // when
+      List<OAuth2Provider> result = socialAccountRepository.findLinkedProvidersByUserId(user.getId());
+
+      // then
+      assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("연동된 계정이 하나면 해당 provider만 반환한다")
+    void 연동된_계정이_하나면_해당_provider만_반환한다() {
+      // given
+      User user = persistUser("hong@test.com");
+      socialAccountRepository.save(
+          SocialAccount.link(user, OAuth2Provider.GOOGLE, "google-sub-1", "hong@gmail.com"));
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      List<OAuth2Provider> result = socialAccountRepository.findLinkedProvidersByUserId(user.getId());
+
+      // then
+      assertThat(result).containsExactly(OAuth2Provider.GOOGLE);
+    }
+
+    @Test
+    @DisplayName("구글과 카카오 모두 연동되어 있으면 둘 다 반환한다")
+    void 구글과_카카오_모두_연동되어_있으면_둘_다_반환한다() {
+      // given
+      User user = persistUser("hong@test.com");
+      socialAccountRepository.save(
+          SocialAccount.link(user, OAuth2Provider.GOOGLE, "google-sub-1", "hong@gmail.com"));
+      socialAccountRepository.save(
+          SocialAccount.link(user, OAuth2Provider.KAKAO, "kakao-sub-1", "hong@kakao.com"));
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      List<OAuth2Provider> result = socialAccountRepository.findLinkedProvidersByUserId(user.getId());
+
+      // then
+      assertThat(result).containsExactlyInAnyOrder(OAuth2Provider.GOOGLE, OAuth2Provider.KAKAO);
+    }
+
+    @Test
+    @DisplayName("다른 사용자의 연동 계정은 섞이지 않는다")
+    void 다른_사용자의_연동_계정은_섞이지_않는다() {
+      // given
+      User user = persistUser("hong@test.com");
+      User otherUser = persistUser("other@test.com");
+      socialAccountRepository.save(
+          SocialAccount.link(otherUser, OAuth2Provider.GOOGLE, "other-google-sub", "other@gmail.com"));
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // when
+      List<OAuth2Provider> result = socialAccountRepository.findLinkedProvidersByUserId(user.getId());
+
+      // then
+      assertThat(result).isEmpty();
     }
   }
 }

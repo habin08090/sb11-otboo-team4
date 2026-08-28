@@ -4,19 +4,25 @@ import com.sprint.mission.otboo.domain.authuser.user.dto.request.ChangePasswordR
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.ProfileUpdateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.UserCreateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.ProfileDto;
+import com.sprint.mission.otboo.domain.authuser.user.dto.response.SocialLinkedStateDto;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.UserDto;
 import com.sprint.mission.otboo.domain.authuser.user.entity.Location;
 import com.sprint.mission.otboo.domain.authuser.user.entity.Profile;
 import com.sprint.mission.otboo.domain.authuser.user.entity.User;
+import com.sprint.mission.otboo.domain.authuser.user.entity.enums.OAuth2Provider;
 import com.sprint.mission.otboo.domain.authuser.user.exception.AccessDeniedException;
 import com.sprint.mission.otboo.domain.authuser.user.exception.DuplicateEmailException;
 import com.sprint.mission.otboo.domain.authuser.user.exception.UserNotFoundException;
 import com.sprint.mission.otboo.domain.authuser.user.mapper.UserMapper;
 import com.sprint.mission.otboo.domain.authuser.user.repository.ProfileRepository;
+import com.sprint.mission.otboo.domain.authuser.user.repository.SocialAccountRepository;
 import com.sprint.mission.otboo.domain.authuser.user.repository.UserRepository;
 import com.sprint.mission.otboo.global.file.storage.FileStorageService;
 import com.sprint.mission.otboo.global.temppassword.registry.TempPasswordRegistry;
 import com.sprint.mission.otboo.security.usersession.registry.UserSessionRegistry;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.exception.ConstraintViolationException;
@@ -40,6 +46,7 @@ public class UserService {
   private final UserSessionRegistry userSessionRegistry;
   private final TempPasswordRegistry tempPasswordRegistry;
   private final FileStorageService fileStorageService;
+  private final SocialAccountRepository socialAccountRepository;
 
   @Transactional
   public UserDto signUp(UserCreateRequest request) {
@@ -112,6 +119,15 @@ public class UserService {
 
     userSessionRegistry.revokeAll(userId);
     tempPasswordRegistry.revoke(userId);
+  }
+
+  public List<SocialLinkedStateDto> getSocialLinkedStates(UUID userId) {
+    Set<OAuth2Provider> linkedProviders =
+        Set.copyOf(socialAccountRepository.findLinkedProvidersByUserId(userId));
+
+    return Arrays.stream(OAuth2Provider.values())
+        .map(provider -> new SocialLinkedStateDto(provider, linkedProviders.contains(provider)))
+        .toList();
   }
 
   private void checkSelf(UUID userId, UUID requestUserId) {

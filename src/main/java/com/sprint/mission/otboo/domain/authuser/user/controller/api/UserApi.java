@@ -7,6 +7,7 @@ import com.sprint.mission.otboo.domain.authuser.user.dto.request.UserListParams;
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.UserLockUpdateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.request.UserRoleUpdateRequest;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.ProfileDto;
+import com.sprint.mission.otboo.domain.authuser.user.dto.response.SocialLinkedStateDto;
 import com.sprint.mission.otboo.domain.authuser.user.dto.response.UserDto;
 import com.sprint.mission.otboo.global.dto.CursorPageResponse;
 import com.sprint.mission.otboo.security.details.UserPrincipal;
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.multipart.MultipartFile;
@@ -58,4 +60,11 @@ public interface UserApi {
   })
   ResponseEntity<Void> changePassword(UUID userId, ChangePasswordRequest request,
       UserPrincipal principal);
+
+  @Operation(summary = "소셜 계정 연동 상태 조회", description = "로그인한 사용자의 구글/카카오 소셜 계정 연동 여부를 조회합니다.")
+  @ApiResponses({
+      @ApiResponse(responseCode = "200", description = "소셜 계정 연동 상태 조회 성공"),
+      @ApiResponse(responseCode = "401", description = "인증되지 않음")
+  })
+  ResponseEntity<List<SocialLinkedStateDto>> getSocialLinkedStates(UserPrincipal principal);
 }
