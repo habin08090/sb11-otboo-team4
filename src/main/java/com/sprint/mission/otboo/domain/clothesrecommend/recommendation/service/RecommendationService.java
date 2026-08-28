@@ -108,7 +108,13 @@ public class RecommendationService {
       return pool;
     }
 
-    log.debug("LLM 후보군에 빠진 종류를 보유 의상으로 보정한다 보정수={}", missing.size());
+    // 보정된 종류는 LLM의 날씨 판단을 거치지 않은 채 후보에 들어간다. 안전망이지 정상 경로가 아니므로,
+    // 자주 찍히면 프롬프트를 손봐야 한다는 신호다.
+    Set<ClothesType> missingTypes = missing.stream()
+        .map(Clothes::getType)
+        .collect(Collectors.toSet());
+    log.warn("LLM이 빠뜨린 종류를 보유 의상으로 보정한다 types={}, 보정수={}",
+        missingTypes, missing.size());
     return Stream.concat(pool.stream(), missing.stream()).toList();
   }
 
