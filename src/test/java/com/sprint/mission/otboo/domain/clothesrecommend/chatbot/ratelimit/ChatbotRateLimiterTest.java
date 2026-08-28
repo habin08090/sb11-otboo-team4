@@ -1,28 +1,30 @@
 package com.sprint.mission.otboo.domain.clothesrecommend.chatbot.ratelimit;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.sprint.mission.otboo.domain.clothesrecommend.chatbot.exception.ChatbotRateLimitExceededException;
 import java.time.Duration;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.RedisScript;
 
 @ExtendWith(MockitoExtension.class)
 class ChatbotRateLimiterTest {
@@ -31,8 +33,6 @@ class ChatbotRateLimiterTest {
 
   @Mock
   StringRedisTemplate redisTemplate;
-  @Mock
-  ValueOperations<String, String> valueOperations;
 
   ChatbotRateLimiter chatbotRateLimiter;
 
@@ -41,51 +41,47 @@ class ChatbotRateLimiterTest {
     chatbotRateLimiter = new ChatbotRateLimiter(redisTemplate, LIMIT_PER_MINUTE);
   }
 
+  @SuppressWarnings("unchecked")
+  private void givenCount(long count) {
+    given(redisTemplate.execute(any(RedisScript.class), anyList(), anyString()))
+        .willReturn(count);
+  }
+
   @Nested
   @DisplayName("사용량 검사")
   class Check {
 
     @Test
-    @DisplayName("제한_이내면_통과하고_카운터를_증가시킨다")
-    void 제한_이내면_통과하고_카운터를_증가시킨다() {
+    @DisplayName("제한_이내면_통과한다")
+    void 제한_이내면_통과한다() {
       // given
       UUID userId = UUID.randomUUID();
-      given(redisTemplate.opsForValue()).willReturn(valueOperations);
-      given(valueOperations.increment(anyString())).willReturn(1L);
+      givenCount(1L);
 
       // when & then
       assertThatCode(() -> chatbotRateLimiter.check(userId)).doesNotThrowAnyException();
-      verify(valueOperations).increment(anyString());
     }
 
     @Test
-    @DisplayName("첫_호출이면_카운터에_만료시간을_건다")
-    void 첫_호출이면_카운터에_만료시간을_건다() {
+    @DisplayName("증가와_만료를_하나의_스크립트로_실행한다")
+    @SuppressWarnings("unchecked")
+    void 증가와_만료를_하나의_스크립트로_실행한다() {
       // given
       UUID userId = UUID.randomUUID();
-      given(redisTemplate.opsForValue()).willReturn(valueOperations);
-      given(valueOperations.increment(anyString())).willReturn(1L);
+      givenCount(1L);
 
       // when
       chatbotRateLimiter.check(userId);
 
       // then
-      verify(redisTemplate).expire(anyString(), eq(Duration.ofMinutes(1)));
-    }
+      ArgumentCaptor<List<String>> keysCaptor = ArgumentCaptor.forClass(List.class);
+      ArgumentCaptor<String> ttlCaptor = ArgumentCaptor.forClass(String.class);
+      verify(redisTemplate)
+          .execute(any(RedisScript.class), keysCaptor.capture(), ttlCaptor.capture());
 
-    @Test
-    @DisplayName("두_번째_호출부터는_만료시간을_다시_걸지_않는다")
-    void 두_번째_호출부터는_만료시간을_다시_걸지_않는다() {
-      // given
-      UUID userId = UUID.randomUUID();
-      given(redisTemplate.opsForValue()).willReturn(valueOperations);
-      given(valueOperations.increment(anyString())).willReturn(2L);
-
-      // when
-      chatbotRateLimiter.check(userId);
-
-      // then
-      verify(redisTemplate, never()).expire(anyString(), any(Duration.class));
+      assertThat(keysCaptor.getValue()).containsExactly("chatbot:ratelimit:" + userId);
+      assertThat(ttlCaptor.getValue())
+          .isEqualTo(String.valueOf(Duration.ofMinutes(1).toMillis()));
     }
 
     @Test
@@ -93,8 +89,7 @@ class ChatbotRateLimiterTest {
     void 제한을_초과하면_ChatbotRateLimitExceededException을_던진다() {
       // given
       UUID userId = UUID.randomUUID();
-      given(redisTemplate.opsForValue()).willReturn(valueOperations);
-      given(valueOperations.increment(anyString())).willReturn((long) LIMIT_PER_MINUTE + 1);
+      givenCount(LIMIT_PER_MINUTE + 1);
 
       // when & then
       assertThatThrownBy(() -> chatbotRateLimiter.check(userId))
@@ -106,8 +101,7 @@ class ChatbotRateLimiterTest {
     void 제한과_같은_횟수까지는_통과한다() {
       // given
       UUID userId = UUID.randomUUID();
-      given(redisTemplate.opsForValue()).willReturn(valueOperations);
-      given(valueOperations.increment(anyString())).willReturn((long) LIMIT_PER_MINUTE);
+      givenCount(LIMIT_PER_MINUTE);
 
       // when & then
       assertThatCode(() -> chatbotRateLimiter.check(userId)).doesNotThrowAnyException();
@@ -115,12 +109,12 @@ class ChatbotRateLimiterTest {
 
     @Test
     @DisplayName("Redis가_실패하면_제한을_적용하지_않고_통과시킨다")
+    @SuppressWarnings("unchecked")
     void Redis가_실패하면_제한을_적용하지_않고_통과시킨다() {
       // given
       UUID userId = UUID.randomUUID();
-      given(redisTemplate.opsForValue()).willReturn(valueOperations);
       willThrow(new QueryTimeoutException("redis down"))
-          .given(valueOperations).increment(anyString());
+          .given(redisTemplate).execute(any(RedisScript.class), anyList(), anyString());
 
       // when & then
       assertThatCode(() -> chatbotRateLimiter.check(userId)).doesNotThrowAnyException();

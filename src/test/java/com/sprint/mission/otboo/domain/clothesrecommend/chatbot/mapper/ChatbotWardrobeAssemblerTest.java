@@ -1,7 +1,7 @@
 package com.sprint.mission.otboo.domain.clothesrecommend.chatbot.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -54,7 +54,7 @@ class ChatbotWardrobeAssemblerTest {
       UUID ownerId = UUID.randomUUID();
       Clothes top = createClothes(ownerId, "리넨 셔츠", ClothesType.TOP);
 
-      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(anyList()))
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(eq(List.of(top.getId()))))
           .willReturn(List.of(
               createAttribute(top.getId(), "두께감", "얇음"),
               createAttribute(top.getId(), "색상", "흰색")));
@@ -77,7 +77,7 @@ class ChatbotWardrobeAssemblerTest {
       UUID ownerId = UUID.randomUUID();
       Clothes shoes = createClothes(ownerId, "운동화", ClothesType.SHOES);
 
-      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(anyList()))
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(eq(List.of(shoes.getId()))))
           .willReturn(List.of());
 
       // when

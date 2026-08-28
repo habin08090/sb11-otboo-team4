@@ -2,6 +2,9 @@ package com.sprint.mission.otboo.external.llm;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.navercorp.fixturemonkey.FixtureMonkey;
+import com.navercorp.fixturemonkey.api.introspector.ConstructorPropertiesArbitraryIntrospector;
+import com.navercorp.fixturemonkey.jakarta.validation.plugin.JakartaValidationPlugin;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.PrecipitationType;
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.WindStrength;
@@ -10,6 +13,7 @@ import com.sprint.mission.otboo.external.llm.dto.LlmChatbotWardrobeItem;
 import com.sprint.mission.otboo.external.llm.dto.LlmChatbotWeather;
 import com.sprint.mission.otboo.global.testcontainers.IntegrationTestSupport;
 import java.util.List;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
@@ -31,11 +35,35 @@ class LlmChatbotFetcherExternalTest extends IntegrationTestSupport {
   @Autowired
   private LlmChatbotFetcher llmChatbotFetcher;
 
+  static FixtureMonkey fixtureMonkey;
+
+  @BeforeAll
+  static void setUpFixtureMonkey() {
+    fixtureMonkey = FixtureMonkey.builder()
+        .objectIntrospector(ConstructorPropertiesArbitraryIntrospector.INSTANCE)
+        .plugin(new JakartaValidationPlugin())
+        .build();
+  }
+
+  private static LlmChatbotWardrobeItem wardrobeItem(String name, ClothesType type,
+      String attributeSummary) {
+    return fixtureMonkey.giveMeBuilder(LlmChatbotWardrobeItem.class)
+        .set("name", name)
+        .set("type", type)
+        .set("attributeSummary", attributeSummary)
+        .sample();
+  }
+
   private static LlmChatbotContext contextOf(String question, LlmChatbotWeather weather) {
-    return new LlmChatbotContext(question, weather, 3, List.of(
-        new LlmChatbotWardrobeItem("리넨 셔츠", ClothesType.TOP, "두께감=얇음, 색상=흰색"),
-        new LlmChatbotWardrobeItem("치노 반바지", ClothesType.BOTTOM, "색상=베이지"),
-        new LlmChatbotWardrobeItem("가죽 재킷", ClothesType.OUTER, "두께감=두꺼움, 색상=검정")));
+    return fixtureMonkey.giveMeBuilder(LlmChatbotContext.class)
+        .set("question", question)
+        .set("weather", weather)
+        .set("sensitivity", 3)
+        .set("wardrobe", List.of(
+            wardrobeItem("리넨 셔츠", ClothesType.TOP, "두께감=얇음, 색상=흰색"),
+            wardrobeItem("치노 반바지", ClothesType.BOTTOM, "색상=베이지"),
+            wardrobeItem("가죽 재킷", ClothesType.OUTER, "두께감=두꺼움, 색상=검정")))
+        .sample();
   }
 
   @Nested
