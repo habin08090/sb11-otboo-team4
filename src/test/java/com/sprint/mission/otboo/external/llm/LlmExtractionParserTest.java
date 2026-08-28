@@ -66,5 +66,30 @@ class LlmExtractionParserTest {
       assertThatThrownBy(() -> parser.parse(response))
           .isInstanceOf(LlmApiException.class);
     }
+
+    @Test
+    @DisplayName("응답이_null이면_LlmApiException을_던진다")
+    void 응답이_null이면_LlmApiException을_던진다() {
+      assertThatThrownBy(() -> parser.parse(null))
+          .isInstanceOf(LlmApiException.class);
+    }
+
+    @Test
+    @DisplayName("choices가_null이면_LlmApiException을_던진다")
+    void choices가_null이면_LlmApiException을_던진다() {
+      LlmChatResponse response = new LlmChatResponse(null);
+
+      assertThatThrownBy(() -> parser.parse(response))
+          .isInstanceOf(LlmApiException.class);
+    }
+
+    @Test
+    @DisplayName("choices가_비어있으면_LlmApiException을_던진다")
+    void choices가_비어있으면_LlmApiException을_던진다() {
+      LlmChatResponse response = new LlmChatResponse(List.of());
+
+      assertThatThrownBy(() -> parser.parse(response))
+          .isInstanceOf(LlmApiException.class);
+    }
   }
 }

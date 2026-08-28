@@ -42,6 +42,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
 
 @ExtendWith(MockitoExtension.class)
@@ -368,6 +369,96 @@ class ClothesAttributeDefServiceTest {
       // then
       verify(clothesAttributeDefValueRepository).deleteAllByDefinitionId(definitionId);
       verify(clothesAttributeDefRepository).delete(existing);
+    }
+  }
+
+  @Nested
+  @DisplayName("이름 중복 동시성 처리")
+  class NameUniqueViolation {
+
+    private static final String UNIQUE_CONSTRAINT = "uq_clothes_attribute_defs_name";
+
+    @Test
+    @DisplayName("등록 중 유니크 제약을 위반하면 이름 중복 예외로 변환한다")
+    void 등록_중_유니크_제약을_위반하면_이름_중복_예외로_변환한다() {
+      // given
+      ClothesAttributeDefCreateRequest request =
+          new ClothesAttributeDefCreateRequest("색상", List.of("블랙", "화이트"));
+
+      given(clothesAttributeDefRepository.existsByName("색상")).willReturn(false);
+      given(clothesAttributeDefRepository.saveAndFlush(any()))
+          .willThrow(new DataIntegrityViolationException(
+              "ERROR: duplicate key value violates unique constraint \""
+                  + UNIQUE_CONSTRAINT + "\""));
+
+      // when & then
+      assertThatThrownBy(() -> clothesAttributeDefService.create(request))
+          .isInstanceOf(ClothesAttributeDefNameDuplicatedException.class);
+
+      verify(clothesAttributeDefValueRepository, never()).saveAll(anyList());
+    }
+
+    @Test
+    @DisplayName("등록 중 다른 제약을 위반하면 원본 예외를 그대로 전파한다")
+    void 등록_중_다른_제약을_위반하면_원본_예외를_그대로_전파한다() {
+      // given
+      ClothesAttributeDefCreateRequest request =
+          new ClothesAttributeDefCreateRequest("색상", List.of("블랙", "화이트"));
+
+      DataIntegrityViolationException original =
+          new DataIntegrityViolationException("ERROR: null value in column \"name\"");
+      given(clothesAttributeDefRepository.existsByName("색상")).willReturn(false);
+      given(clothesAttributeDefRepository.saveAndFlush(any())).willThrow(original);
+
+      // when & then
+      assertThatThrownBy(() -> clothesAttributeDefService.create(request))
+          .isSameAs(original);
+    }
+
+    @Test
+    @DisplayName("수정 중 유니크 제약을 위반하면 이름 중복 예외로 변환한다")
+    void 수정_중_유니크_제약을_위반하면_이름_중복_예외로_변환한다() {
+      // given
+      UUID definitionId = UUID.randomUUID();
+      ClothesAttributeDef existing = ClothesAttributeDef.create("색상");
+      ClothesAttributeDefUpdateRequest request =
+          new ClothesAttributeDefUpdateRequest("컬러", List.of("블랙", "화이트"));
+
+      given(clothesAttributeDefRepository.findById(definitionId))
+          .willReturn(Optional.of(existing));
+      given(clothesAttributeDefRepository.existsByName("컬러")).willReturn(false);
+      given(clothesAttributeDefRepository.saveAndFlush(existing))
+          .willThrow(new DataIntegrityViolationException(
+              "ERROR: duplicate key value violates unique constraint \""
+                  + UNIQUE_CONSTRAINT + "\""));
+
+      // when & then
+      assertThatThrownBy(() -> clothesAttributeDefService.update(definitionId, request))
+          .isInstanceOf(ClothesAttributeDefNameDuplicatedException.class);
+
+      verify(clothesAttributeDefValueRepository, never())
+          .deleteAllByDefinitionId(definitionId);
+    }
+
+    @Test
+    @DisplayName("수정 중 다른 제약을 위반하면 원본 예외를 그대로 전파한다")
+    void 수정_중_다른_제약을_위반하면_원본_예외를_그대로_전파한다() {
+      // given
+      UUID definitionId = UUID.randomUUID();
+      ClothesAttributeDef existing = ClothesAttributeDef.create("색상");
+      ClothesAttributeDefUpdateRequest request =
+          new ClothesAttributeDefUpdateRequest("컬러", List.of("블랙", "화이트"));
+
+      DataIntegrityViolationException original =
+          new DataIntegrityViolationException("ERROR: value too long for type character varying");
+      given(clothesAttributeDefRepository.findById(definitionId))
+          .willReturn(Optional.of(existing));
+      given(clothesAttributeDefRepository.existsByName("컬러")).willReturn(false);
+      given(clothesAttributeDefRepository.saveAndFlush(existing)).willThrow(original);
+
+      // when & then
+      assertThatThrownBy(() -> clothesAttributeDefService.update(definitionId, request))
+          .isSameAs(original);
     }
   }
 }

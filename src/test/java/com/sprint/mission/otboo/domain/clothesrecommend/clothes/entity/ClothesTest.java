@@ -7,6 +7,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @DisplayName("의상")
 class ClothesTest {
@@ -113,6 +114,20 @@ class ClothesTest {
 
       // when & then
       assertThat(clothes.isDeleted()).isFalse();
+    }
+
+    @Test
+    @DisplayName("softDeletable이 비어 있어도 삭제하면 isDeleted가 true를 반환한다")
+    void softDeletable이_비어_있어도_삭제하면_isDeleted가_true를_반환한다() {
+      // given - 삭제 컬럼이 모두 null인 행을 읽어오면 JPA가 임베디드 필드를 null로 채운다
+      Clothes clothes = Clothes.create(UUID.randomUUID(), "가디건", ClothesType.OUTER);
+      ReflectionTestUtils.setField(clothes, "softDeletable", null);
+
+      // when
+      clothes.delete();
+
+      // then
+      assertThat(clothes.isDeleted()).isTrue();
     }
   }
 }

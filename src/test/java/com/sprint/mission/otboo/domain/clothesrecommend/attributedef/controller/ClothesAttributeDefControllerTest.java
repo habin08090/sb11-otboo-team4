@@ -8,12 +8,14 @@ import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.AttributeDefSortBy;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.ClothesAttributeDefCreateRequest;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.ClothesAttributeDefDto;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.ClothesAttributeDefListParams;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.dto.ClothesAttributeDefUpdateRequest;
@@ -43,6 +45,34 @@ class ClothesAttributeDefControllerTest {
 
   @MockitoBean
   private ClothesAttributeDefService clothesAttributeDefService;
+
+  @Nested
+  @DisplayName("Create")
+  class Create {
+
+    @Test
+    @DisplayName("Should return 201 with created dto")
+    void createSuccess() throws Exception {
+      // given
+      UUID definitionId = UUID.randomUUID();
+      ClothesAttributeDefCreateRequest request =
+          new ClothesAttributeDefCreateRequest("색상", List.of("블랙", "화이트"));
+      ClothesAttributeDefDto responseDto = new ClothesAttributeDefDto(
+          definitionId, "색상", List.of("블랙", "화이트"), Instant.now());
+
+      given(clothesAttributeDefService.create(any())).willReturn(responseDto);
+
+      // when & then
+      mockMvc.perform(post("/api/clothes/attribute-defs")
+              .contentType(MediaType.APPLICATION_JSON)
+              .content(objectMapper.writeValueAsString(request)))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.id").value(definitionId.toString()))
+          .andExpect(jsonPath("$.name").value("색상"))
+          .andExpect(jsonPath("$.selectableValues[0]").value("블랙"))
+          .andExpect(jsonPath("$.selectableValues[1]").value("화이트"));
+    }
+  }
 
   @Nested
   @DisplayName("Update")

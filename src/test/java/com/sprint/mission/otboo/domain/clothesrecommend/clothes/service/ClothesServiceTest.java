@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,6 +13,7 @@ import static org.mockito.Mockito.when;
 
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDef;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.exception.ClothesAttributeDefNotFoundException;
+import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.entity.ClothesAttributeDefValue;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefRepository;
 import com.sprint.mission.otboo.domain.clothesrecommend.attributedef.repository.ClothesAttributeDefValueRepository;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesAttributeDto;
@@ -550,6 +552,119 @@ class ClothesServiceTest {
       // when & then
       assertThatThrownBy(() -> clothesService.delete(clothesId))
           .isInstanceOf(ClothesNotFoundException.class);
+    }
+  }
+
+  @Nested
+  @DisplayName("ID 목록으로 의상 조회")
+  class GetClothesByIds {
+
+    @Test
+    @DisplayName("조회된 의상마다 속성과 선택 값을 채워서 반환한다")
+    void 조회된_의상마다_속성과_선택_값을_채워서_반환한다() {
+      // given
+      UUID ownerId = UUID.randomUUID();
+      Clothes top = Clothes.create(ownerId, "반팔티", ClothesType.TOP);
+      Clothes bottom = Clothes.create(ownerId, "청바지", ClothesType.BOTTOM);
+      List<UUID> clothesIds = List.of(top.getId(), bottom.getId());
+
+      given(clothesRepository.findAllById(clothesIds)).willReturn(List.of(top, bottom));
+
+      ClothesAttributeDef colorDef = ClothesAttributeDef.create("색상");
+      ClothesAttribute topAttribute =
+          ClothesAttribute.create(top.getId(), colorDef, "블랙");
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(clothesIds))
+          .willReturn(List.of(topAttribute));
+
+      given(clothesAttributeDefValueRepository.findAllByDefinitionIds(
+          List.of(colorDef.getId())))
+          .willReturn(List.of(
+              ClothesAttributeDefValue.create(colorDef, "블랙", 0),
+              ClothesAttributeDefValue.create(colorDef, "화이트", 1)));
+
+      ClothesDto topDto = new ClothesDto(
+          top.getId(), ownerId, "반팔티", null, ClothesType.TOP, List.of());
+      ClothesDto bottomDto = new ClothesDto(
+          bottom.getId(), ownerId, "청바지", null, ClothesType.BOTTOM, List.of());
+      given(clothesMapper.toDto(eq(top), anyList(), anyMap())).willReturn(topDto);
+      given(clothesMapper.toDto(eq(bottom), anyList(), anyMap())).willReturn(bottomDto);
+
+      // when
+      List<ClothesDto> result = clothesService.getClothesByIds(clothesIds);
+
+      // then
+      assertThat(result).containsExactly(topDto, bottomDto);
+      verify(clothesAttributeDefValueRepository)
+          .findAllByDefinitionIds(List.of(colorDef.getId()));
+    }
+
+    @Test
+    @DisplayName("속성이 하나도 없으면 선택 값을 조회하지 않는다")
+    void 속성이_하나도_없으면_선택_값을_조회하지_않는다() {
+      // given
+      UUID ownerId = UUID.randomUUID();
+      Clothes top = Clothes.create(ownerId, "반팔티", ClothesType.TOP);
+      List<UUID> clothesIds = List.of(top.getId());
+
+      given(clothesRepository.findAllById(clothesIds)).willReturn(List.of(top));
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(clothesIds))
+          .willReturn(List.of());
+
+      ClothesDto topDto = new ClothesDto(
+          top.getId(), ownerId, "반팔티", null, ClothesType.TOP, List.of());
+      given(clothesMapper.toDto(eq(top), anyList(), anyMap())).willReturn(topDto);
+
+      // when
+      List<ClothesDto> result = clothesService.getClothesByIds(clothesIds);
+
+      // then
+      assertThat(result).containsExactly(topDto);
+      verify(clothesAttributeDefValueRepository, never()).findAllByDefinitionIds(anyList());
+    }
+
+    @Test
+    @DisplayName("삭제된 의상은 제외하고 반환한다")
+    void 삭제된_의상은_제외하고_반환한다() {
+      // given
+      UUID ownerId = UUID.randomUUID();
+      Clothes alive = Clothes.create(ownerId, "반팔티", ClothesType.TOP);
+      Clothes deleted = Clothes.create(ownerId, "청바지", ClothesType.BOTTOM);
+      deleted.delete();
+      List<UUID> clothesIds = List.of(alive.getId(), deleted.getId());
+
+      given(clothesRepository.findAllById(clothesIds)).willReturn(List.of(alive, deleted));
+      given(clothesAttributeRepository.findAllByClothesIdsWithDefinition(
+          List.of(alive.getId())))
+          .willReturn(List.of());
+
+      ClothesDto aliveDto = new ClothesDto(
+          alive.getId(), ownerId, "반팔티", null, ClothesType.TOP, List.of());
+      given(clothesMapper.toDto(eq(alive), anyList(), anyMap())).willReturn(aliveDto);
+
+      // when
+      List<ClothesDto> result = clothesService.getClothesByIds(clothesIds);
+
+      // then
+      assertThat(result).containsExactly(aliveDto);
+    }
+
+    @Test
+    @DisplayName("살아있는 의상이 하나도 없으면 빈 목록을 반환한다")
+    void 살아있는_의상이_하나도_없으면_빈_목록을_반환한다() {
+      // given
+      UUID ownerId = UUID.randomUUID();
+      Clothes deleted = Clothes.create(ownerId, "반팔티", ClothesType.TOP);
+      deleted.delete();
+      List<UUID> clothesIds = List.of(deleted.getId());
+
+      given(clothesRepository.findAllById(clothesIds)).willReturn(List.of(deleted));
+
+      // when
+      List<ClothesDto> result = clothesService.getClothesByIds(clothesIds);
+
+      // then
+      assertThat(result).isEmpty();
+      verify(clothesAttributeRepository, never()).findAllByClothesIdsWithDefinition(anyList());
     }
   }
 }

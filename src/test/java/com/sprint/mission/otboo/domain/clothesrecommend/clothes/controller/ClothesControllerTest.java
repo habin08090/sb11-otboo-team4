@@ -15,12 +15,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesCreateRequest;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesDto;
+import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesListParams;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesType;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.dto.ClothesUpdateRequest;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.exception.ClothesNotFoundException;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.service.ClothesExtractionService;
 import com.sprint.mission.otboo.domain.clothesrecommend.clothes.service.ClothesService;
+import com.sprint.mission.otboo.global.dto.CursorPageResponse;
+import com.sprint.mission.otboo.global.dto.SortDirection;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
@@ -51,6 +55,98 @@ class ClothesControllerTest {
 
   @MockitoBean
   ClothesExtractionService clothesExtractionService;
+
+  @Nested
+  @DisplayName("옷 목록 조회: GET /api/clothes")
+  class GetClothes {
+
+    @Test
+    @DisplayName("정상 요청이면 200과 커서 페이지를 반환한다")
+    void 정상_요청이면_200과_커서_페이지를_반환한다() throws Exception {
+      // given
+      UUID ownerId = UUID.randomUUID();
+      UUID clothesId = UUID.randomUUID();
+
+      ClothesDto dto = new ClothesDto(
+          clothesId, ownerId, "반팔티", null, ClothesType.TOP, List.of());
+      CursorPageResponse<ClothesDto> page = new CursorPageResponse<>(
+          List.of(dto), null, null, false, 1L, "createdAt", SortDirection.DESCENDING);
+      given(clothesService.getClothes(any(ClothesListParams.class))).willReturn(page);
+
+      // when & then
+      mockMvc.perform(get("/api/clothes")
+              .param("ownerId", ownerId.toString())
+              .param("limit", "20")
+              .with(csrf()))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data[0].id").value(clothesId.toString()))
+          .andExpect(jsonPath("$.data[0].name").value("반팔티"))
+          .andExpect(jsonPath("$.hasNext").value(false))
+          .andExpect(jsonPath("$.totalCount").value(1));
+    }
+
+    @Test
+    @DisplayName("ownerId가 없으면 400을 반환한다")
+    void ownerId가_없으면_400을_반환한다() throws Exception {
+      // when & then
+      mockMvc.perform(get("/api/clothes")
+              .param("limit", "20")
+              .with(csrf()))
+          .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("limit이 허용 범위를 벗어나면 400을 반환한다")
+    void limit이_허용_범위를_벗어나면_400을_반환한다() throws Exception {
+      // when & then
+      mockMvc.perform(get("/api/clothes")
+              .param("ownerId", UUID.randomUUID().toString())
+              .param("limit", "101")
+              .with(csrf()))
+          .andExpect(status().isBadRequest());
+    }
+  }
+
+  @Nested
+  @DisplayName("옷 등록: POST /api/clothes")
+  class CreateClothes {
+
+    @Test
+    @DisplayName("정상 요청이면 201과 ClothesDto를 반환한다")
+    void 정상_요청이면_201과_ClothesDto를_반환한다() throws Exception {
+      // given
+      UUID ownerId = UUID.randomUUID();
+      UUID clothesId = UUID.randomUUID();
+
+      ClothesDto expectedDto = new ClothesDto(
+          clothesId, ownerId, "반팔티", null, ClothesType.TOP, List.of());
+      given(clothesService.create(any(ClothesCreateRequest.class), any()))
+          .willReturn(expectedDto);
+
+      String requestJson = """
+          {
+            "ownerId": "%s",
+            "name": "반팔티",
+            "type": "TOP",
+            "attributes": []
+          }
+          """.formatted(ownerId);
+
+      MockMultipartFile requestPart = new MockMultipartFile(
+          "request", "request.json", MediaType.APPLICATION_JSON_VALUE,
+          requestJson.getBytes(StandardCharsets.UTF_8));
+
+      // when & then
+      mockMvc.perform(multipart("/api/clothes")
+              .file(requestPart)
+              .with(csrf()))
+          .andExpect(status().isCreated())
+          .andExpect(jsonPath("$.id").value(clothesId.toString()))
+          .andExpect(jsonPath("$.ownerId").value(ownerId.toString()))
+          .andExpect(jsonPath("$.name").value("반팔티"))
+          .andExpect(jsonPath("$.type").value("TOP"));
+    }
+  }
 
   @Nested
   @DisplayName("옷 수정: PATCH /api/clothes/{clothesId}")

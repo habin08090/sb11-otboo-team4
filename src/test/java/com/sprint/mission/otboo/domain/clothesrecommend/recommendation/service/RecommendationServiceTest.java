@@ -26,6 +26,7 @@ import com.sprint.mission.otboo.domain.weathernotification.weather.repository.We
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -528,6 +529,58 @@ class RecommendationServiceTest {
           .anyMatch(ootd -> ootd.name().equals("LLM 선택 반팔"));
       assertThat(result.clothes())
           .noneMatch(ootd -> ootd.name().equals("규칙 기반 반팔"));
+    }
+  }
+
+  @Nested
+  @DisplayName("체감 온도별 추천 의상 종류")
+  class GetRecommendedTypes {
+
+    @Test
+    @DisplayName("혹한이면 아우터와 목도리, 양말까지 추천한다")
+    void 혹한이면_아우터와_목도리_양말까지_추천한다() {
+      // when
+      Set<ClothesType> types = recommendationService.getRecommendedTypes(0.0);
+
+      // then
+      assertThat(types).containsExactlyInAnyOrder(
+          ClothesType.SHOES, ClothesType.TOP, ClothesType.BOTTOM,
+          ClothesType.OUTER, ClothesType.SCARF, ClothesType.SOCKS);
+    }
+
+    @Test
+    @DisplayName("추위면 목도리 없이 양말까지 추천한다")
+    void 추위면_목도리_없이_양말까지_추천한다() {
+      // when
+      Set<ClothesType> types = recommendationService.getRecommendedTypes(6.0);
+
+      // then
+      assertThat(types).containsExactlyInAnyOrder(
+          ClothesType.SHOES, ClothesType.TOP, ClothesType.BOTTOM,
+          ClothesType.OUTER, ClothesType.SOCKS);
+    }
+
+    @Test
+    @DisplayName("선선하면 아우터까지만 추천한다")
+    void 선선하면_아우터까지만_추천한다() {
+      // when
+      Set<ClothesType> types = recommendationService.getRecommendedTypes(12.0);
+
+      // then
+      assertThat(types).containsExactlyInAnyOrder(
+          ClothesType.SHOES, ClothesType.TOP, ClothesType.BOTTOM, ClothesType.OUTER);
+    }
+
+    @Test
+    @DisplayName("따뜻하면 아우터를 추천하지 않는다")
+    void 따뜻하면_아우터를_추천하지_않는다() {
+      // when
+      Set<ClothesType> types = recommendationService.getRecommendedTypes(24.0);
+
+      // then
+      assertThat(types).contains(ClothesType.SHOES);
+      assertThat(types).doesNotContain(
+          ClothesType.OUTER, ClothesType.SCARF, ClothesType.SOCKS);
     }
   }
 }
