@@ -24,6 +24,7 @@ import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.
 import com.sprint.mission.otboo.domain.weathernotification.weather.entity.enums.WindStrength;
 import com.sprint.mission.otboo.domain.weathernotification.weather.repository.WeatherRepository;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -533,6 +534,88 @@ class RecommendationServiceTest {
   }
 
   @Nested
+  @DisplayName("추천 결과 다양성")
+  class Variety {
+
+    @Test
+    @DisplayName("같은 요청을 반복해도 후보가 여러 벌이면 서로 다른 조합이 나온다")
+    void 같은_요청을_반복해도_후보가_여러_벌이면_서로_다른_조합이_나온다() {
+      // given - 종류마다 후보를 3벌씩 두어 조합이 달라질 여지를 만든다
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(25.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Instant base = Instant.parse("2026-08-01T00:00:00Z");
+      List<Clothes> wardrobe = List.of(
+          createClothesWithCreatedAt(userId, "반팔 티셔츠", ClothesType.TOP, base),
+          createClothesWithCreatedAt(userId, "긴팔 티셔츠", ClothesType.TOP, base.plusSeconds(1)),
+          createClothesWithCreatedAt(userId, "맨투맨", ClothesType.TOP, base.plusSeconds(2)),
+          createClothesWithCreatedAt(userId, "청바지", ClothesType.BOTTOM, base.plusSeconds(3)),
+          createClothesWithCreatedAt(userId, "슬랙스", ClothesType.BOTTOM, base.plusSeconds(4)),
+          createClothesWithCreatedAt(userId, "반바지", ClothesType.BOTTOM, base.plusSeconds(5)),
+          createClothesWithCreatedAt(userId, "운동화", ClothesType.SHOES, base.plusSeconds(6)),
+          createClothesWithCreatedAt(userId, "구두", ClothesType.SHOES, base.plusSeconds(7)),
+          createClothesWithCreatedAt(userId, "샌들", ClothesType.SHOES, base.plusSeconds(8)));
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(wardrobe);
+      given(recommendationMapper.toOotdDtoList(any()))
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
+
+      // when - 같은 입력으로 여러 번 호출한다
+      Set<List<String>> distinctResults = new HashSet<>();
+      for (int i = 0; i < 30; i++) {
+        distinctResults.add(recommendationService.recommend(weatherId, userId).clothes()
+            .stream().map(OotdDto::name).toList());
+      }
+
+      // then
+      assertThat(distinctResults)
+          .as("30회 호출에서 나온 서로 다른 조합의 수")
+          .hasSizeGreaterThan(1);
+    }
+
+    @Test
+    @DisplayName("조합에는 종류마다 한 벌만 담긴다")
+    void 조합에는_종류마다_한_벌만_담긴다() {
+      // given
+      UUID weatherId = UUID.randomUUID();
+      UUID userId = UUID.randomUUID();
+
+      Weather weather = createWeather(25.0, PrecipitationType.NONE,
+          SkyStatus.CLEAR, WindStrength.WEAK);
+      Profile profile = createProfile(userId, 3);
+
+      Instant base = Instant.parse("2026-08-01T00:00:00Z");
+      List<Clothes> wardrobe = List.of(
+          createClothesWithCreatedAt(userId, "반팔 티셔츠", ClothesType.TOP, base),
+          createClothesWithCreatedAt(userId, "긴팔 티셔츠", ClothesType.TOP, base.plusSeconds(1)),
+          createClothesWithCreatedAt(userId, "청바지", ClothesType.BOTTOM, base.plusSeconds(2)),
+          createClothesWithCreatedAt(userId, "슬랙스", ClothesType.BOTTOM, base.plusSeconds(3)),
+          createClothesWithCreatedAt(userId, "운동화", ClothesType.SHOES, base.plusSeconds(4)));
+
+      given(weatherRepository.findById(weatherId)).willReturn(Optional.of(weather));
+      given(profileRepository.findByIdWithUser(userId)).willReturn(Optional.of(profile));
+      given(clothesRepository.findActiveByOwnerIdAndTypeIn(eq(userId), anyCollection()))
+          .willReturn(wardrobe);
+      given(recommendationMapper.toOotdDtoList(any()))
+          .willAnswer(inv -> toOotdStub(inv.getArgument(0)));
+
+      // when & then
+      for (int i = 0; i < 20; i++) {
+        List<OotdDto> clothes = recommendationService.recommend(weatherId, userId).clothes();
+        assertThat(clothes.stream().map(OotdDto::type).toList())
+            .doesNotHaveDuplicates();
+      }
+    }
+  }
+
+  @Nested
   @DisplayName("체감 온도별 추천 의상 종류")
   class GetRecommendedTypes {
 
@@ -581,6 +664,28 @@ class RecommendationServiceTest {
       assertThat(types).contains(ClothesType.SHOES);
       assertThat(types).doesNotContain(
           ClothesType.OUTER, ClothesType.SCARF, ClothesType.SOCKS);
+    }
+
+    @Test
+    @DisplayName("날씨와 무관한 가방과 액세서리는 어떤 온도에서도 추천한다")
+    void 날씨와_무관한_가방과_액세서리는_어떤_온도에서도_추천한다() {
+      // when & then
+      for (double temp : new double[] {-5.0, 0.0, 6.0, 12.0, 24.0, 30.0}) {
+        assertThat(recommendationService.getRecommendedTypes(temp))
+            .as("체감 %.1f도", temp)
+            .contains(ClothesType.BAG, ClothesType.ACCESSORY);
+      }
+    }
+
+    @Test
+    @DisplayName("속옷과 기타는 어떤 온도에서도 추천하지 않는다")
+    void 속옷과_기타는_어떤_온도에서도_추천하지_않는다() {
+      // when & then
+      for (double temp : new double[] {-5.0, 0.0, 6.0, 12.0, 24.0, 30.0}) {
+        assertThat(recommendationService.getRecommendedTypes(temp))
+            .as("체감 %.1f도", temp)
+            .doesNotContain(ClothesType.UNDERWEAR, ClothesType.ETC);
+      }
     }
   }
 }
