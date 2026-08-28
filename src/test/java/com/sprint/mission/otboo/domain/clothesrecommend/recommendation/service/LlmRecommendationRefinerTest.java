@@ -161,6 +161,25 @@ class LlmRecommendationRefinerTest {
     }
 
     @Test
+    @DisplayName("캐시에_빈_목록이_들어_있으면_적중으로_보지_않고_LLM을_다시_호출한다")
+    void 캐시에_빈_목록이_들어_있으면_적중으로_보지_않고_LLM을_다시_호출한다() {
+      // given - 빈 후보군을 그대로 쓰면 LLM이 아무것도 고르지 않은 것과 같아진다
+      Clothes top = Clothes.create(UUID.randomUUID(), "니트", ClothesType.TOP);
+      List<Clothes> candidates = List.of(top);
+
+      given(recommendationCacheStore.find(context)).willReturn(Optional.of(List.of()));
+      given(llmRecommendationFetcher.select(any(LlmRecommendationContext.class)))
+          .willReturn(new LlmSelectedClothes(List.of(top.getId())));
+
+      // when
+      List<Clothes> result = refiner().selectPool(context, candidates);
+
+      // then
+      assertThat(result).containsExactly(top);
+      verify(llmRecommendationFetcher).select(context);
+    }
+
+    @Test
     @DisplayName("캐시된_id가_현재_후보에_없으면_LLM을_다시_호출한다")
     void 캐시된_id가_현재_후보에_없으면_LLM을_다시_호출한다() {
       // given

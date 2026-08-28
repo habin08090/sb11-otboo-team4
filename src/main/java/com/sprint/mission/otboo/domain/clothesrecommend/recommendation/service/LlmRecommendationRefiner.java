@@ -87,6 +87,12 @@ public class LlmRecommendationRefiner {
    */
   private Optional<List<Clothes>> resolve(List<UUID> clothesIds,
       Map<UUID, Clothes> candidatesById) {
+    // 빈 후보군은 LLM이 아무것도 고르지 않은 것과 같아 후보군으로 쓸 수 없다. 파서가 빈 응답을 이미
+    // 막고 있지만, 그 보장에 기대지 않고 여기서도 확인한다.
+    if (clothesIds.isEmpty()) {
+      return Optional.empty();
+    }
+
     List<Clothes> resolved = new ArrayList<>();
     for (UUID clothesId : clothesIds) {
       Clothes clothes = candidatesById.get(clothesId);
