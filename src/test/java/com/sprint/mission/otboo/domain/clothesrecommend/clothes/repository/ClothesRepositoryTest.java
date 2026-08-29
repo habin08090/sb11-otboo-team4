@@ -154,4 +154,26 @@ class ClothesRepositoryTest {
       assertThat(imageUrls).containsExactlyInAnyOrder("clothes/a.png", "clothes/b.png");
     }
   }
+
+  @Nested
+  @DisplayName("이름 길이")
+  class NameLength {
+
+    @Test
+    @DisplayName("255자 이름을 저장하고 그대로 읽어온다")
+    void _255자_이름을_저장하고_그대로_읽어온다() {
+      // given - DTO 제약(@Size(max = 255))과 컬럼 길이가 어긋나면 여기서 깨진다
+      UUID ownerId = UUID.randomUUID();
+      String name = "가".repeat(255);
+
+      // when
+      Clothes saved = clothesRepository.save(Clothes.create(ownerId, name, ClothesType.TOP));
+      testEntityManager.flush();
+      testEntityManager.clear();
+
+      // then
+      Clothes found = testEntityManager.find(Clothes.class, saved.getId());
+      assertThat(found.getName()).hasSize(255).isEqualTo(name);
+    }
+  }
 }
