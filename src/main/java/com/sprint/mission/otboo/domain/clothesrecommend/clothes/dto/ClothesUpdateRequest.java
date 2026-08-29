@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record ClothesUpdateRequest(
-    @Size(max = 50) String name,
+    @Size(max = 255) String name,
     ClothesType type,
     @Valid List<ClothesAttributeDto> attributes
 ) {}

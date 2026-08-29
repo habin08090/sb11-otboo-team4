@@ -43,7 +43,7 @@ public class Clothes {
   @Column(name = "owner_id", nullable = false)
   private UUID ownerId;
 
-  @Column(nullable = false, length = 50)
+  @Column(nullable = false, length = 255)
   private String name;
 
   @Column(name = "image_url", length = 255)
