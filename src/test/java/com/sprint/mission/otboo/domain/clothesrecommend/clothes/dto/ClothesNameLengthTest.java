@@ -8,6 +8,7 @@ import jakarta.validation.Validator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,7 @@ class ClothesNameLengthTest {
     return VALIDATOR.validate(target).stream()
         .map(ConstraintViolation::getPropertyPath)
         .map(Object::toString)
-        .collect(java.util.stream.Collectors.toSet());
+        .collect(Collectors.toSet());
   }
 
   @Nested
@@ -47,29 +48,55 @@ class ClothesNameLengthTest {
     @Test
     @DisplayName("이름이 255자면 통과한다")
     void 이름이_255자면_통과한다() {
-      assertThat(violatedFields(request(nameOfLength(NAME_MAX_LENGTH)))).isEmpty();
+      // given
+      ClothesCreateRequest request = request(nameOfLength(NAME_MAX_LENGTH));
+
+      // when
+      Set<String> violatedFields = violatedFields(request);
+
+      // then
+      assertThat(violatedFields).isEmpty();
     }
 
     @Test
     @DisplayName("구매 링크에서 불러온 길이의 상품명도 통과한다")
     void 구매_링크에서_불러온_길이의_상품명도_통과한다() {
-      // 실제 무신사 페이지 제목 — 65자
+      // given - 실제 무신사 페이지 제목 (65자)
       String extracted =
           "피지컬 디파트먼트(PHYSICAL DEPARTMENT) 나일론 사커 롱슬리브_다크 블루 - 사이즈 & 후기 | 무신사";
+      ClothesCreateRequest request = request(extracted);
 
-      assertThat(violatedFields(request(extracted))).isEmpty();
+      // when
+      Set<String> violatedFields = violatedFields(request);
+
+      // then
+      assertThat(violatedFields).isEmpty();
     }
 
     @Test
     @DisplayName("이름이 256자면 name에 위반이 잡힌다")
     void 이름이_256자면_name에_위반이_잡힌다() {
-      assertThat(violatedFields(request(nameOfLength(NAME_MAX_LENGTH + 1)))).contains("name");
+      // given
+      ClothesCreateRequest request = request(nameOfLength(NAME_MAX_LENGTH + 1));
+
+      // when
+      Set<String> violatedFields = violatedFields(request);
+
+      // then
+      assertThat(violatedFields).contains("name");
     }
 
     @Test
     @DisplayName("이름이 비면 name에 위반이 잡힌다")
     void 이름이_비면_name에_위반이_잡힌다() {
-      assertThat(violatedFields(request("   "))).contains("name");
+      // given
+      ClothesCreateRequest request = request("   ");
+
+      // when
+      Set<String> violatedFields = violatedFields(request);
+
+      // then
+      assertThat(violatedFields).contains("name");
     }
   }
 
@@ -84,20 +111,40 @@ class ClothesNameLengthTest {
     @Test
     @DisplayName("이름이 255자면 통과한다")
     void 이름이_255자면_통과한다() {
-      assertThat(violatedFields(request(nameOfLength(NAME_MAX_LENGTH)))).isEmpty();
+      // given
+      ClothesUpdateRequest request = request(nameOfLength(NAME_MAX_LENGTH));
+
+      // when
+      Set<String> violatedFields = violatedFields(request);
+
+      // then
+      assertThat(violatedFields).isEmpty();
     }
 
     @Test
     @DisplayName("이름이 256자면 name에 위반이 잡힌다")
     void 이름이_256자면_name에_위반이_잡힌다() {
-      assertThat(violatedFields(request(nameOfLength(NAME_MAX_LENGTH + 1)))).contains("name");
+      // given
+      ClothesUpdateRequest request = request(nameOfLength(NAME_MAX_LENGTH + 1));
+
+      // when
+      Set<String> violatedFields = violatedFields(request);
+
+      // then
+      assertThat(violatedFields).contains("name");
     }
 
     @Test
     @DisplayName("이름을 보내지 않으면 위반이 없다")
     void 이름을_보내지_않으면_위반이_없다() {
-      // 수정은 부분 갱신이라 name이 null이어도 된다
-      assertThat(violatedFields(request(null))).isEmpty();
+      // given - 수정은 부분 갱신이라 name이 null이어도 된다
+      ClothesUpdateRequest request = request(null);
+
+      // when
+      Set<String> violatedFields = violatedFields(request);
+
+      // then
+      assertThat(violatedFields).isEmpty();
     }
   }
 }
